@@ -1,6 +1,6 @@
 # @thipages/pacpam
 
-![version](https://img.shields.io/badge/version-0.9.0-blue) ![tests](https://img.shields.io/badge/tests-81%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-12-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
+![version](https://img.shields.io/badge/version-0.9.1-blue) ![tests](https://img.shields.io/badge/tests-81%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-12-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
 
 Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation.
 

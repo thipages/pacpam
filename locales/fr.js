@@ -1,4 +1,4 @@
-{
+export default {
   "states": {
     "connection": {
       "IDLE": "Aucune connexion active. Le système attend une initialisation.",
@@ -56,4 +56,4 @@
     "CIRCUIT_UNSTABLE": "Connexion instable ({failures} échecs).",
     "CIRCUIT_OK": "Connexion disponible."
   }
-}
+};

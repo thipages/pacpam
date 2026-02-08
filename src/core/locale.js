@@ -1,9 +1,14 @@
 let locale = null;
 
 export async function loadLocale(lang = 'fr') {
-  const url = new URL(`../../locales/${lang}.json`, import.meta.url);
-  const response = await fetch(url);
-  locale = await response.json();
+  const modules = {
+    fr: () => import('../../locales/fr.js'),
+    en: () => import('../../locales/en.js'),
+  };
+  const loader = modules[lang];
+  if (!loader) throw new Error(`Locale '${lang}' not found`);
+  const module = await loader();
+  locale = module.default;
   return locale;
 }
 

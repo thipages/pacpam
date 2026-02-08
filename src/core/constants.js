@@ -23,8 +23,5 @@ export { MESSAGE_RATE_LIMITS } from '../security/rate-limiter.js';
 // monitoringWindow = 60000 ms
 
 // Connexion — défini dans core/network.js
-// (valeurs en dur dans le code)
-// connectionTimeout = 10000 ms
-// authTimeout = 5000 ms
-// pingInterval = 3000 ms
-// pongTimeout = 10000 ms
+// (configurables via options du constructeur NetworkManager)
+export { CONNECTION_TIMEOUT, AUTH_TIMEOUT, PING_INTERVAL, PONG_TIMEOUT } from './network.js';

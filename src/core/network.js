@@ -4,12 +4,18 @@
  * Utilise StateRunner + connectionStates comme source de vérité
  */
 
+import { Peer } from 'peerjs';
 import { validateMessage, sanitizeString, sanitizeGameState } from '../security/message-validator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
 import { P2PCircuitBreaker } from '../security/circuit-breaker.js';
 import { StateRunner } from './state-runner.js';
 import { connectionStates, initial } from './connection-states.js';
 import { t } from './locale.js';
+
+export const CONNECTION_TIMEOUT = 10000;
+export const AUTH_TIMEOUT = 5000;
+export const PING_INTERVAL = 3000;
+export const PONG_TIMEOUT = 10000;
 
 const PEER_ERROR_EVENTS = {
   'unavailable-id':  'ID_UNAVAILABLE',
@@ -23,6 +29,10 @@ export class NetworkManager {
 
   constructor(options = {}) {
     this.debug = options.debug || false;
+    this.connectionTimeoutMs = options.connectionTimeout ?? CONNECTION_TIMEOUT;
+    this.authTimeoutMs = options.authTimeout ?? AUTH_TIMEOUT;
+    this.pingIntervalMs = options.pingInterval ?? PING_INTERVAL;
+    this.pongTimeoutMs = options.pongTimeout ?? PONG_TIMEOUT;
     this.peer = null;
     this.connection = null;
     this.myId = null;
@@ -119,7 +129,7 @@ export class NetworkManager {
         this.clearTimeouts();
         this.authTimeout = setTimeout(() => {
           this.sm.send('AUTH_TIMEOUT');
-        }, 5000);
+        }, this.authTimeoutMs);
         this.onAuthRequired?.(this.isHost);
       },
       exit: () => {
@@ -259,7 +269,7 @@ export class NetworkManager {
             this.sm.send('TIMEOUT'); // → emit cb.FAILURE
             reject(new Error('Timeout: joueur introuvable'));
           }
-        }, 10000);
+        }, this.connectionTimeoutMs);
 
         // Attendre l'ouverture de la connexion
         const originalOnOpen = this.connection.on.bind(this.connection);
@@ -358,14 +368,14 @@ export class NetworkManager {
     this.lastPong = Date.now();
 
     this.pingInterval = setInterval(() => {
-      if (Date.now() - this.lastPong > 10000) {
+      if (Date.now() - this.lastPong > this.pongTimeoutMs) {
         console.warn('[Network] Connexion perdue (pas de pong)');
         this.sm.send('PING_TIMEOUT');
         return;
       }
 
       this.send({ type: 'ping', timestamp: Date.now() });
-    }, 3000);
+    }, this.pingIntervalMs);
   }
 
   /**

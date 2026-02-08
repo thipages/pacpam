@@ -13,9 +13,13 @@ const network = new NetworkManager({ debug: false });
 
 **Constructeur**
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `options.debug` | `boolean` | Active les logs console `[Network]` |
+| Param | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `options.debug` | `boolean` | `false` | Active les logs console `[Network]` |
+| `options.connectionTimeout` | `number` | `10000` | Timeout de connexion WebRTC (ms) |
+| `options.authTimeout` | `number` | `5000` | Timeout d'authentification (ms) |
+| `options.pingInterval` | `number` | `3000` | Intervalle entre les pings keepalive (ms) |
+| `options.pongTimeout` | `number` | `10000` | Délai sans pong avant déconnexion (ms) |
 
 **Méthodes**
 

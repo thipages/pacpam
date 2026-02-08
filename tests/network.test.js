@@ -1,9 +1,9 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Mock Peer global avant d'importer NetworkManager
+// Mock du module peerjs avant d'importer NetworkManager
 const peerInstances = [];
-globalThis.Peer = class Peer {
+class MockPeer {
   constructor(id) {
     this.id = id;
     this.destroyed = false;
@@ -11,7 +11,9 @@ globalThis.Peer = class Peer {
   }
   on() {}
   destroy() { this.destroyed = true; }
-};
+}
+
+mock.module('peerjs', { namedExports: { Peer: MockPeer } });
 
 const { NetworkManager } = await import('../src/core/network.js');
 

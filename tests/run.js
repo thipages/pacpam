@@ -8,3 +8,7 @@ await import('./rate-limiter.test.js');
 await import('./circuit-breaker.test.js');
 await import('./p2p-sync.test.js');
 await import('./network.test.js');
+
+// Force exit — --experimental-test-module-mocks garde des handles ouverts
+process.on('exit', () => {});
+setTimeout(() => process.exit(0), 500);
