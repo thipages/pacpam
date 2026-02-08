@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"E:\\\\thipages\\\\pacpam\" log --oneline -5)",
+      "Bash(git -C \"E:\\\\thipages\\\\pacpam\" status)",
+      "Bash(git config:*)",
+      "Bash(git -C \"E:\\\\thipages\\\\pacpam\" add .claude/ .gitignore LICENSE README.md docs/ locales/ package.json package-lock.json pages/ src/ tests/)"
+    ]
+  }
+}

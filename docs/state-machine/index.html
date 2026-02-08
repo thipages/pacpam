@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Machines d'états — Pacpam</title>
+  <script type="module">
+    import mermaid from 'https://esm.sh/mermaid@11.12.2';
+    import { toFlowchartMulti } from './to-flowchart.js';
+    import { connectionStates, initial as connInitial } from '../../src/core/connection-states.js';
+    import { circuitBreakerStates, initial as cbInitial } from '../../src/security/circuit-breaker-states.js';
+
+    mermaid.initialize({
+      startOnLoad: false,
+      flowchart: { nodeSpacing: 80, rankSpacing: 60 }
+    });
+
+    document.querySelector('.mermaid').textContent =
+      toFlowchartMulti([
+        { id: 'conn', states: connectionStates, initial: connInitial, label: 'Connexion' },
+        { id: 'cb', states: circuitBreakerStates, initial: cbInitial, label: 'Disjoncteur' }
+      ], { direction: 'LR' });
+    mermaid.run();
+
+    document.getElementById('export-svg').addEventListener('click', async () => {
+      const svg = document.querySelector('.mermaid svg');
+      if (!svg) return;
+      const pkg = await fetch('../../package.json').then(r => r.json());
+      let source = new XMLSerializer().serializeToString(svg);
+      source = source.replace(/<br\s*>/gi, '<br/>');
+      const blob = new Blob([source], { type: 'image/svg+xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `pacpam-${pkg.version}.svg`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  </script>
+</head>
+<body>
+  <h1>Machines d'états — Pacpam</h1>
+  <button id="export-svg">Exporter SVG</button>
+
+  <pre class="mermaid"></pre>
+</body>
+</html>

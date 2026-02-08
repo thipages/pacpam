@@ -1,0 +1,29 @@
+{
+  "name": "@thipages/pacpam",
+  "version": "0.9.0",
+  "description": "Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "keywords": ["p2p", "peerjs", "webrtc", "state-machine", "synchronization"],
+  "author": "Thierry PAGES",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thipages/pacpam.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thipages/pacpam/issues"
+  },
+  "homepage": "https://github.com/thipages/pacpam#readme",
+  "files": ["src/", "locales/", "README.md"],
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "peerjs": "^1.5.4"
+  }
+}

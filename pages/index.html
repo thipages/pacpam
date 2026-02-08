@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Chat Pacpam</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #111;
+      --surface: #1a1a1a;
+      --text: #e0e0e0;
+      --muted: #777;
+      --border: #333;
+      --accent: #4b8df8;
+      --danger: #f87171;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --msg-me: #1e3a5f;
+      --msg-peer: #2a2a2a;
+      --msg-error: #3b1111;
+      --msg-system: #222;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* --- Barre supérieure --- */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    #my-name {
+      font-weight: 400;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .log-toggle {
+      font-size: 0.75rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .log-toggle input { vertical-align: middle; }
+
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      flex-shrink: 0;
+    }
+
+    .status-dot.on { background: var(--success); }
+    .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 50% { opacity: 0.4; } }
+
+    .latency { font-variant-numeric: tabular-nums; }
+
+    /* --- Écrans --- */
+    .screen {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .screen.active { display: flex; }
+
+    /* --- Écran login --- */
+    .login {
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .login-card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus {
+      border-color: var(--accent);
+    }
+
+    .hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:active:not(:disabled) { opacity: 0.7; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-full { width: 100%; }
+
+    /* --- Écran chat --- */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .msg-me {
+      align-self: flex-end;
+      background: var(--msg-me);
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg-peer {
+      align-self: flex-start;
+      background: var(--msg-peer);
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg-system {
+      align-self: center;
+      background: var(--msg-system);
+      color: var(--muted);
+      font-size: 0.75rem;
+      border-radius: 8px;
+      text-align: center;
+      display: none;
+    }
+
+    .show-logs .msg-system { display: block; }
+
+    .msg-error {
+      align-self: center;
+      background: var(--msg-error);
+      color: var(--danger);
+      font-size: 0.8rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .msg-name {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .msg-time {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 2px;
+      text-align: right;
+    }
+
+    /* --- Barre de saisie --- */
+    .input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .input-bar input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .input-bar input:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-send {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .btn-send:disabled { opacity: 0.3; cursor: default; }
+
+    /* --- Barre de connexion pair (écran chat) --- */
+    .peer-bar {
+      display: flex;
+      gap: 8px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .peer-bar input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .peer-bar input:focus {
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <!-- Barre supérieure -->
+  <header>
+    <h1>Chat Pacpam <span id="my-name"></span></h1>
+    <section class="status-bar">
+      <label class="log-toggle"><input type="checkbox" id="show-logs"> journaux</label>
+      <span class="status-dot" id="dot"></span>
+      <span id="status-text">Hors ligne</span>
+      <span class="latency" id="latency"></span>
+    </section>
+  </header>
+
+  <!-- Écran login -->
+  <section class="screen login active" id="screen-login">
+    <section class="login-card">
+      <h2>Connexion</h2>
+      <section class="field">
+        <label for="pseudo">Pseudo</label>
+        <input id="pseudo" placeholder="lettres, chiffres, - _" maxlength="10" autocomplete="off">
+      </section>
+      <section class="field">
+        <label for="password">Mot de passe (recommandé, 8+ caractères)</label>
+        <input id="password" type="password" placeholder="identique pour les deux pairs">
+      </section>
+      <button id="btn-join" class="btn btn-accent btn-full">Rejoindre</button>
+    </section>
+  </section>
+
+  <!-- Écran chat -->
+  <section class="screen" id="screen-chat">
+    <section class="peer-bar">
+      <input id="peer-id" placeholder="Pseudo du pair distant" autocomplete="off">
+      <button id="btn-connect" class="btn btn-accent">Connecter</button>
+      <button id="btn-disconnect" class="btn btn-danger" disabled>Quitter</button>
+    </section>
+    <section class="chat-area" id="chat-area"></section>
+    <section class="input-bar">
+      <input id="message" placeholder="Message..." disabled autocomplete="off">
+      <button class="btn-send" id="btn-send" disabled aria-label="Envoyer">&#9654;</button>
+    </section>
+  </section>
+
+  <script type="module">
+    import { loadLocale } from '../src/core/locale.js';
+    import { NetworkManager } from '../src/core/network.js';
+    import { createAuthMessage, verifyHash } from '../src/core/auth.js';
+    import { registerMessageSchemas } from '../src/security/message-validator.js';
+
+    // Schéma applicatif
+    registerMessageSchemas({
+      chat: {
+        required: ['text'],
+        fields: {
+          text: { type: 'string', maxLength: 500 },
+          from: { type: 'string', maxLength: 10 }
+        }
+      }
+    });
+
+    const APP_ID = 'pacpam-chat-2026';
+
+    // DOM
+    const $ = id => document.getElementById(id);
+    const $screenLogin = $('screen-login');
+    const $screenChat = $('screen-chat');
+    const $pseudo = $('pseudo');
+    const $password = $('password');
+    const $btnJoin = $('btn-join');
+    const $peerId = $('peer-id');
+    const $btnConnect = $('btn-connect');
+    const $btnDisconnect = $('btn-disconnect');
+    const $chatArea = $('chat-area');
+    const $message = $('message');
+    const $btnSend = $('btn-send');
+    const $dot = $('dot');
+    const $statusText = $('status-text');
+    const $latency = $('latency');
+    const $myName = $('my-name');
+    const $showLogs = $('show-logs');
+
+    $showLogs.addEventListener('change', () => {
+      $chatArea.classList.toggle('show-logs', $showLogs.checked);
+    });
+
+
+    let network = null;
+    let myName = '';
+    let password = '';
+    let peerConnected = false;
+
+    // --- Utilitaires d'affichage ---
+
+    function timeStr() {
+      return new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMsg(type, text, name) {
+      const el = document.createElement('article');
+      el.className = `msg msg-${type}`;
+
+      if (name) {
+        const n = document.createElement('p');
+        n.className = 'msg-name';
+        n.textContent = name;
+        el.appendChild(n);
+      }
+
+      const t = document.createElement('p');
+      t.textContent = text;
+      el.appendChild(t);
+
+      if (type === 'me' || type === 'peer') {
+        const ts = document.createElement('p');
+        ts.className = 'msg-time';
+        ts.textContent = timeStr();
+        el.appendChild(ts);
+      }
+
+      $chatArea.appendChild(el);
+      $chatArea.scrollTop = $chatArea.scrollHeight;
+    }
+
+    function setConnectionState(state) {
+      // state: 'off' | 'connecting' | 'server' | 'connected'
+      $dot.className = 'status-dot';
+      switch (state) {
+        case 'off':
+          $statusText.textContent = 'Hors ligne';
+          break;
+        case 'connecting':
+          $dot.classList.add('connecting');
+          $statusText.textContent = 'Connexion...';
+          break;
+        case 'server':
+          $dot.classList.add('connecting');
+          $statusText.textContent = 'En attente';
+          break;
+        case 'connected':
+          $dot.classList.add('on');
+          $statusText.textContent = 'Connecté';
+          break;
+      }
+    }
+
+    function setPeerConnected(connected) {
+      peerConnected = connected;
+      $message.disabled = !connected;
+      $btnSend.disabled = !connected;
+      $btnDisconnect.disabled = !connected;
+      $btnConnect.disabled = connected;
+      $peerId.disabled = connected;
+      if (connected) $message.focus();
+    }
+
+    function showScreen(name) {
+      $screenLogin.classList.toggle('active', name === 'login');
+      $screenChat.classList.toggle('active', name === 'chat');
+    }
+
+    // --- Locale ---
+    await loadLocale();
+
+    // --- Rejoindre ---
+    function join() {
+      myName = $pseudo.value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+      if (myName.length < 3) return;
+
+      password = $password.value;
+      network = new NetworkManager({ debug: true });
+
+      network.onIdReady = () => {
+        setConnectionState('server');
+        showScreen('chat');
+        addMsg('system', `Connecté au serveur — pseudo : ${myName}`);
+      };
+
+      network.onAuthRequired = async () => {
+        const authMsg = await createAuthMessage(password, myName);
+        network.send(authMsg);
+      };
+
+      network.onAuthFailed = (peerId) => {
+        addMsg('error', 'Authentification échouée — mots de passe différents.');
+      };
+
+      network.onConnected = () => {
+        setConnectionState('connected');
+        setPeerConnected(true);
+        addMsg('system', 'Connexion établie !');
+      };
+
+      network.onDisconnected = () => {
+        setConnectionState('server');
+        setPeerConnected(false);
+        $latency.textContent = '';
+        addMsg('system', 'Pair déconnecté.');
+      };
+
+      network.onPing = (latency) => {
+        $latency.textContent = `${latency}ms`;
+      };
+
+      network.onError = (err) => {
+        if (!$screenChat.classList.contains('active')) {
+          // Encore sur l'écran login : réactiver le formulaire
+          network = null;
+          $pseudo.disabled = false;
+          $password.disabled = false;
+          $btnJoin.disabled = false;
+          setConnectionState('off');
+          alert(err.message);
+          return;
+        }
+        addMsg('error', err.message);
+      };
+
+      network.onData = (data) => {
+        if (data.type === 'auth') {
+          handleAuth(data);
+        } else if (data.type === 'chat') {
+          addMsg('peer', data.text, data.from);
+        }
+      };
+
+      network.init(myName, APP_ID);
+      $myName.textContent = `— ${myName}`;
+      $pseudo.disabled = true;
+      $password.disabled = true;
+      $btnJoin.disabled = true;
+      setConnectionState('connecting');
+    }
+
+    $btnJoin.addEventListener('click', join);
+    $pseudo.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+
+    // --- Connexion à un pair ---
+    function connectToPeer() {
+      const peerPseudo = $peerId.value.trim().toUpperCase();
+      if (!peerPseudo) return;
+      const peerId = `${APP_ID}-${peerPseudo}`;
+      addMsg('system', `Connexion à ${peerPseudo}...`);
+      setConnectionState('connecting');
+      network.connectTo(peerId);
+    }
+
+    $btnConnect.addEventListener('click', connectToPeer);
+    $peerId.addEventListener('keydown', e => { if (e.key === 'Enter') connectToPeer(); });
+
+    // --- Déconnexion ---
+    $btnDisconnect.addEventListener('click', () => {
+      network.disconnect();
+      network = null;
+      setConnectionState('off');
+      setPeerConnected(false);
+      $latency.textContent = '';
+      addMsg('system', 'Déconnecté.');
+      showScreen('login');
+    });
+
+    // --- Envoi message ---
+    function sendMessage() {
+      const text = $message.value.trim();
+      if (!text) return;
+      network.send({ type: 'chat', text, from: myName });
+      addMsg('me', text);
+      $message.value = '';
+      $message.focus();
+    }
+
+    $btnSend.addEventListener('click', sendMessage);
+    $message.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+    // --- Authentification ---
+    async function handleAuth(data) {
+      const authMsg = await createAuthMessage(password, myName);
+      if (verifyHash(authMsg.hash, data.hash)) {
+        addMsg('system', `${data.name} authentifié.`);
+        network.authSuccess();
+      } else {
+        network.authFailed();
+      }
+    }
+  </script>
+</body>
+</html>
