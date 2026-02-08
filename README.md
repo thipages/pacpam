@@ -26,6 +26,17 @@ network.onError = (err) => console.error(err.message);
 network.init('P01', 'a1b2c3d4e5f6');  // pseudo : 3-10 chars, A-Z 0-9 _ -
 ```
 
+### Sans bundler (ES modules natifs)
+
+```html
+<script type="importmap">
+{ "imports": { "@thipages/pacpam": "https://esm.sh/@thipages/pacpam@0.9.1" } }
+</script>
+<script type="module">
+  import { loadLocale, NetworkManager } from '@thipages/pacpam';
+</script>
+```
+
 ## Démo
 
 [Chat Pacpam](https://thipages.github.io/pacpam/pages/) — ouvrir dans deux onglets pour tester.
