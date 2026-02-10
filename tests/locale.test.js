@@ -4,7 +4,7 @@ import { loadLocale, t } from '../src/core/locale.js';
 
 describe('Locale', () => {
   it('t() retourne la clé brute avant chargement', () => {
-    assert.equal(t('errors.NETWORK_ERROR'), 'errors.NETWORK_ERROR');
+    assert.equal(t('errors.SIGNALING_ERROR'), 'errors.SIGNALING_ERROR');
   });
 
   describe('après chargement fr', () => {
@@ -13,12 +13,12 @@ describe('Locale', () => {
     });
 
     it('loadLocale charge le fichier fr.json', () => {
-      const result = t('errors.NETWORK_ERROR');
-      assert.notEqual(result, 'errors.NETWORK_ERROR');
+      const result = t('errors.SIGNALING_ERROR');
+      assert.notEqual(result, 'errors.SIGNALING_ERROR');
     });
 
     it('t() accède aux traductions après chargement', () => {
-      assert.equal(t('errors.NETWORK_ERROR'), 'Erreur réseau.');
+      assert.equal(t('errors.SIGNALING_ERROR'), 'Erreur du serveur de signalisation.');
     });
 
     it('t() retourne la clé brute pour une clé inexistante', () => {

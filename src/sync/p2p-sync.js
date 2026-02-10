@@ -53,7 +53,7 @@ export class P2PSync {
 
     const interval = 1000 / this.fps;
 
-    // TODO: setInterval n'est pas précis (drift, throttle en arrière-plan).
+    // Note: setInterval n'est pas précis (drift, throttle en arrière-plan).
     // Acceptable ici car on envoie des snapshots complets (pas de deltas),
     // donc un retard n'accumule pas d'erreur. À réévaluer si besoin de
     // timing strict (ex: setTimeout récursif auto-corrigé).

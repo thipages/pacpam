@@ -141,7 +141,7 @@ import { loadLocale, t } from '@thipages/pacpam';
 
 **Clés disponibles** : `states.*`, `events.*`, `guards.*`, `signals.*`, `errors.*`
 
-Exemple : `t('errors.NETWORK_ERROR')` → `"Erreur réseau."`
+Exemple : `t('errors.SIGNALING_ERROR')` → `"Erreur du serveur de signalisation."`
 
 ---
 

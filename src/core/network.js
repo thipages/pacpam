@@ -20,7 +20,7 @@ export const PONG_TIMEOUT = 10000;
 const PEER_ERROR_EVENTS = {
   'unavailable-id':  'ID_UNAVAILABLE',
   'peer-unavailable': 'PEER_UNAVAILABLE',
-  'network':          'NETWORK_ERROR',
+  'network':          'SIGNALING_ERROR',
   'disconnected':     'SIGNALING_LOST'
 };
 
@@ -178,7 +178,7 @@ export class NetworkManager {
       this.peer = new Peer(this.myId, { debug: 1 });
     } catch (e) {
       console.error('[Network] Erreur création Peer:', e);
-      this.sm.send('NETWORK_ERROR');
+      this.sm.send('PEER_CREATION_ERROR');
       this.onError?.(new Error('Impossible de créer la connexion P2P'));
       return;
     }
@@ -355,7 +355,7 @@ export class NetworkManager {
 
     this.connection.on('error', (err) => {
       console.warn('[Network] Erreur connexion:', err.message || err);
-      this.sm.send('NETWORK_ERROR');
+      this.sm.send('CONNECTION_ERROR');
       this.onError?.(err);
     });
   }
