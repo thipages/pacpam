@@ -47,10 +47,10 @@ describe('Connection States', () => {
   });
 
   it('IDLE → INITIALIZING via INIT', () => {
-    assert.equal(connectionStates.IDLE.on.INIT, 'INITIALIZING');
+    assert.equal(connectionStates.IDLE.on.INIT.target, 'INITIALIZING');
   });
 
   it('CONNECTED gère DISCONNECT vers IDLE', () => {
-    assert.equal(connectionStates.CONNECTED.on.DISCONNECT, 'IDLE');
+    assert.equal(connectionStates.CONNECTED.on.DISCONNECT.target, 'IDLE');
   });
 });
