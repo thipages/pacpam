@@ -18,12 +18,12 @@ describe('Rate Limiting', () => {
     assert.equal(limiter.checkLimit('default', 'peer2'), false);
   });
 
-  it('respecte les limites par type (peerState: 35/sec)', () => {
+  it('respecte les limites par type (localState: 35/sec)', () => {
     const limiter = new RateLimiter();
     for (let i = 0; i < 35; i++) {
-      assert.equal(limiter.checkLimit('peerState', 'peer3'), true, `PeerState ${i + 1} devrait passer`);
+      assert.equal(limiter.checkLimit('localState', 'peer3'), true, `localState ${i + 1} devrait passer`);
     }
-    assert.equal(limiter.checkLimit('peerState', 'peer3'), false);
+    assert.equal(limiter.checkLimit('localState', 'peer3'), false);
   });
 
   it('bloque un pair après trop de violations', () => {
@@ -56,7 +56,7 @@ describe('Rate Limiting', () => {
   });
 
   it('MESSAGE_RATE_LIMITS contient les types attendus', () => {
-    const expected = ['peerState', 'fullState', 'action', 'auth', 'ping', 'pong', 'default'];
+    const expected = ['localState', 'fullState', 'action', 'message', '_ctrl', 'auth', 'ping', 'pong', 'default'];
     for (const type of expected) {
       assert.ok(type in MESSAGE_RATE_LIMITS, `${type} devrait être défini`);
       assert.ok('max' in MESSAGE_RATE_LIMITS[type], `${type} devrait avoir max`);

@@ -3,43 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <title>Machines d'états — Pacpam</title>
+  <style>
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; }
+    h1 { color: #7fdbca; margin-bottom: 16px; }
+    h2 { color: #c792ea; font-size: 14px; margin: 24px 0 8px; text-transform: uppercase; }
+    button { background: #0f3460; border: 1px solid #555; color: #e0e0e0; padding: 4px 12px;
+             cursor: pointer; font-family: monospace; font-size: 12px; margin-right: 6px; }
+    button:hover { background: #1a4f8a; }
+    .mermaid { background: #fff; padding: 12px; border-radius: 4px; margin-bottom: 16px; }
+  </style>
   <script type="module">
     import mermaid from 'https://esm.sh/mermaid@11.12.2';
     import { toFlowchartMulti } from './to-flowchart.js';
     import { connectionStates, initial as connInitial } from '../../src/core/connection-states.js';
     import { circuitBreakerStates, initial as cbInitial } from '../../src/security/circuit-breaker-states.js';
+    import { p2pSyncStates, p2pSyncInitial } from '../../src/sync/p2p-sync-states.js';
+    import { guardStates, guardInitial } from '../../src/sync/guard-states.js';
+    import { sessionStates, sessionInitial } from '../../src/sync/session.js';
 
     mermaid.initialize({
       startOnLoad: false,
       flowchart: { nodeSpacing: 80, rankSpacing: 60 }
     });
 
-    document.querySelector('.mermaid').textContent =
+    // Couche 2 — Connexion + Disjoncteur
+    document.getElementById('diagram-l2').textContent =
       toFlowchartMulti([
         { id: 'conn', states: connectionStates, initial: connInitial, label: 'Connexion' },
         { id: 'cb', states: circuitBreakerStates, initial: cbInitial, label: 'Disjoncteur' }
       ], { direction: 'LR' });
+
+    // Couche 3 — P2PSync + Guard + Session
+    document.getElementById('diagram-l3').textContent =
+      toFlowchartMulti([
+        { id: 'sync', states: p2pSyncStates, initial: p2pSyncInitial, label: 'P2PSync' },
+        { id: 'guard', states: guardStates, initial: guardInitial, label: 'Guard présence' },
+        { id: 'sess', states: sessionStates, initial: sessionInitial, label: 'Session' }
+      ], { direction: 'LR' });
+
+    // Vue transversale — Connexion + P2PSync (cross-links)
+    document.getElementById('diagram-cross').textContent =
+      toFlowchartMulti([
+        { id: 'conn', states: connectionStates, initial: connInitial, label: 'Connexion' },
+        { id: 'sync', states: p2pSyncStates, initial: p2pSyncInitial, label: 'P2PSync' }
+      ], { direction: 'LR' });
+
     mermaid.run();
 
-    document.getElementById('export-svg').addEventListener('click', async () => {
-      const svg = document.querySelector('.mermaid svg');
-      if (!svg) return;
-      const pkg = await fetch('../../package.json').then(r => r.json());
-      let source = new XMLSerializer().serializeToString(svg);
-      source = source.replace(/<br\s*>/gi, '<br/>');
-      const blob = new Blob([source], { type: 'image/svg+xml' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `pacpam-${pkg.version}.svg`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
+    // Export SVG
+    function exportDiagram(selector, suffix) {
+      return async () => {
+        const svg = document.querySelector(`${selector} svg`);
+        if (!svg) return;
+        const pkg = await fetch('../../package.json').then(r => r.json());
+        let source = new XMLSerializer().serializeToString(svg);
+        source = source.replace(/<br\s*>/gi, '<br/>');
+        const blob = new Blob([source], { type: 'image/svg+xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `pacpam-${pkg.version}-${suffix}.svg`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      };
+    }
+
+    document.getElementById('export-l2').addEventListener('click', exportDiagram('#diagram-l2', 'connexion'));
+    document.getElementById('export-l3').addEventListener('click', exportDiagram('#diagram-l3', 'sync'));
+    document.getElementById('export-cross').addEventListener('click', exportDiagram('#diagram-cross', 'cross'));
   </script>
 </head>
 <body>
   <h1>Machines d'états — Pacpam</h1>
-  <button id="export-svg">Exporter SVG</button>
 
-  <pre class="mermaid"></pre>
+  <h2>Couche 2 — Connexion</h2>
+  <button id="export-l2">Exporter SVG</button>
+  <pre class="mermaid" id="diagram-l2"></pre>
+
+  <h2>Couche 3 — Synchronisation P2P</h2>
+  <button id="export-l3">Exporter SVG</button>
+  <pre class="mermaid" id="diagram-l3"></pre>
+
+  <h2>Vue transversale — Connexion ↔ P2PSync</h2>
+  <button id="export-cross">Exporter SVG</button>
+  <pre class="mermaid" id="diagram-cross"></pre>
 </body>
 </html>

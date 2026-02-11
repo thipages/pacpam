@@ -1,6 +1,6 @@
 export const connectionStates = {
   IDLE: {
-    on: { INIT: { id: 'c1', target: 'INITIALIZING' } }
+    on: { INIT: { id: 'c1', target: 'INITIALIZING', emit: { sm: 'sync', event: 'CONNECT' } } }
   },
   INITIALIZING: {
     on: {
@@ -32,7 +32,7 @@ export const connectionStates = {
   },
   AUTHENTICATING: {
     on: {
-      AUTH_SUCCESS:     { id: 'c18', target: 'CONNECTED' },
+      AUTH_SUCCESS:     { id: 'c18', target: 'CONNECTED', emit: { sm: 'sync', event: 'TRANSPORT_CONNECTED' } },
       AUTH_FAILED:      { id: 'c19', target: 'READY' },
       AUTH_TIMEOUT:     { id: 'c20', target: 'READY' },
       CLOSE:            { id: 'c21', target: 'READY' },
@@ -43,12 +43,12 @@ export const connectionStates = {
   },
   CONNECTED: {
     on: {
-      CLOSE:            { id: 'c25', target: 'READY' },
-      PING_TIMEOUT:     { id: 'c26', target: 'READY' },
+      CLOSE:            { id: 'c25', target: 'READY', emit: { sm: 'sync', event: 'TRANSPORT_LOST' } },
+      PING_TIMEOUT:     { id: 'c26', target: 'READY', emit: { sm: 'sync', event: 'TRANSPORT_LOST' } },
       SIGNALING_LOST:   { id: 'c27', target: 'CONNECTED', actionLabel: 'reconnect signaling' },
-      SIGNALING_ERROR:  { id: 'c28', target: 'READY' },
-      CONNECTION_ERROR: { id: 'c29', target: 'READY' },
-      DISCONNECT:       { id: 'c30', target: 'IDLE' }
+      SIGNALING_ERROR:  { id: 'c28', target: 'READY', emit: { sm: 'sync', event: 'TRANSPORT_LOST' } },
+      CONNECTION_ERROR: { id: 'c29', target: 'READY', emit: { sm: 'sync', event: 'TRANSPORT_LOST' } },
+      DISCONNECT:       { id: 'c30', target: 'IDLE', emit: { sm: 'sync', event: 'TRANSPORT_LOST' } }
     }
   }
 };

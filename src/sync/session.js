@@ -7,7 +7,7 @@ import { StateRunner } from '../core/state-runner.js';
 
 // --- SM Session ---
 
-const sessionStates = {
+export const sessionStates = {
   IDLE: {
     on: { CREATE: { id: 's1', target: 'CONNECTING' } }
   },
@@ -22,6 +22,8 @@ const sessionStates = {
   },
   DISCONNECTED: {}
 };
+
+export const sessionInitial = 'IDLE';
 
 export class Session {
   constructor(id, mode, fps, handler) {
