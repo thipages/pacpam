@@ -808,10 +808,18 @@ Quand au moins une session applicative a un fps **supérieur à celui de `_prese
 P2PSync surveille la réception de données (tous flux confondus : `_presence`, sessions continues, messages discrets) via le guard de présence. Si aucune donnée n'est reçue pendant un délai configurable, le guard passe à OPEN et P2PSync déclenche un événement d'absence :
 
 ```js
+// Guard passe à OPEN (pair absent)
 sync.onPresenceLost = () => {
     showStatus('Pair inactif');
 };
+
+// Guard revient à CLOSED (pair de retour)
+sync.onPresenceBack = () => {
+    showStatus('Pair connecté');
+};
 ```
+
+Ces callbacks opèrent au niveau P2PSync (une seule fois). Les handlers de session reçoivent les mêmes transitions via `onPeerAbsent()` / `onPeerBack()` (par session).
 
 La SM du guard de présence (HALF_OPEN / CLOSED / OPEN) et son intégration dans la SM de P2PSync sont décrites dans la section **Machine à états de P2PSync**.
 
