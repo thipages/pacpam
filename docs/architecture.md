@@ -226,8 +226,8 @@ Chaque session définit son propre **mode** pour l'échange de données :
 
 | Mode | Qui fait foi | Flux de données | Statut |
 |------|-------------|----------------|--------|
-| **centralisé** | L'hôte détient l'état de vérité | Guest → action → Hôte → le fullState autoritaire → Guest | Implémenté |
-| **indépendant** | Chacun son état, pas de conflit | Pair → Pair (chacun envoie le sien, bidirectionnel) | Implémenté |
+| **centralisé** | L'hôte détient l'état de vérité | Guest → action → Hôte → le fullState autoritaire → Guest | Défini |
+| **indépendant** | Chacun son état, pas de conflit | Pair → Pair (chacun envoie le sien, bidirectionnel) | Défini |
 | **collaboratif** | Personne — convergence (CRDT/OT) | Pair → Pair (même donnée, conflits possibles) | Réservé |
 
 ### Deux dimensions de communication
@@ -241,7 +241,7 @@ Une session est caractérisée par son **mode** et son **fps**.
 | `0` | **Discret seul** — envois à la demande uniquement |
 | `> 0` | **Discret + continu** — la boucle de synchronisation tourne à la fréquence donnée, ET les envois ponctuels restent possibles |
 
-Une session supporte **toujours** les envois discrets. Le `fps` contrôle uniquement si une boucle continue de synchronisation d'état tourne en plus. `setFps(n)` permet de changer ce paramètre à chaud sur une session active :
+Une session supporte **toujours** les envois discrets. Le `fps` contrôle uniquement si une boucle continue de synchronisation d'état tourne en plus. Le fps est une **propriété de la session**, pas du pair : les deux pairs tournent au même fps. Seul l'hôte peut le changer via `setFps(n)` (niveau administratif), ce qui envoie un `_ctrl: 'sessionSetFps'` pour synchroniser le guest :
 
 ```
 fps = 0   →  chat, tour par tour (discret seul)
@@ -382,6 +382,25 @@ Hôte                                        Guest
 
 Les messages préfixés `_ctrl` sont des messages de contrôle internes à P2PSync. Ils ne sont jamais exposés aux handlers. La session `_presence` n'utilise pas ce protocole — elle est démarrée implicitement par P2PSync sur les deux pairs sans handshake.
 
+#### API de création
+
+Côté **hôte** — crée la session et fournit son handler :
+
+```js
+sync.createSession('game', { mode: 'centralisé', fps: 30 }, gameHandler);
+```
+
+Côté **guest** — enregistre un callback de notification. P2PSync l'appelle à chaque `sessionCreate` reçu. Le callback retourne le handler :
+
+```js
+sync.onSessionCreate = (id, config) => {
+    // config = { mode, fps }
+    return createHandler(id, config);
+};
+```
+
+P2PSync envoie automatiquement `sessionReady` une fois le handler instancié.
+
 #### États d'une session
 
 ```
@@ -517,9 +536,11 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 
 #### Quelles méthodes pour quel type ?
 
+Le tableau indique **quand** P2PSync appelle chaque méthode automatiquement. « — » signifie que P2PSync ne l'appelle jamais pour cette configuration (le handler peut ne pas l'implémenter).
+
 | Méthode | centralisé, fps = 0 | centralisé, fps > 0 | indépendant, fps = 0 | indépendant, fps > 0 |
 |---------|:-:|:-:|:-:|:-:|
-| `getLocalState()` | broadcastState | broadcastState + boucle fps | — | boucle fps |
+| `getLocalState()` | après processAction + broadcastState | idem + boucle fps | broadcastState | boucle fps + broadcastState |
 | `applyRemoteState()` | guest | guest | — | les deux |
 | `processAction()` | hôte (+guest prédiction) | hôte (+guest prédiction) | — | — |
 | `onMessage()` | — | — | les deux | les deux |
@@ -534,8 +555,8 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 
 ```
 SessionCtrl {
-    setFps(n)                // Changer le fps à chaud (0 = arrêter la boucle)
-    broadcastState()         // Envoyer getLocalState() immédiatement (hors boucle)
+    setFps(n)                // Changer le fps à chaud (hôte seul → _ctrl synchronise le guest)
+    broadcastState()         // Envoyer getLocalState() immédiatement (envoi initié par l'hôte)
     sendAction(action)       // Envoyer une action discrète (centralisé, guest → hôte)
     sendMessage(message)     // Envoyer un message discret (indépendant, bidirectionnel)
     fps                      // fps courant (lecture seule)
@@ -546,12 +567,14 @@ SessionCtrl {
 
 | Méthode | centralisé | indépendant |
 |---------|:-:|:-:|
-| `setFps(n)` | les deux | les deux |
+| `setFps(n)` | hôte | hôte |
 | `broadcastState()` | hôte | les deux |
 | `sendAction(action)` | guest | — |
 | `sendMessage(message)` | — | les deux |
 
-**Deux portes d'accès, même objet** : le handler reçoit `ctrl` dans `onStart`, l'application obtient le même objet via `sync.getSession(id)`. Si les deux modifient le fps simultanément, c'est la responsabilité du développeur de coordonner (comme tout état partagé).
+**Deux portes d'accès, même objet** : le handler reçoit `ctrl` dans `onStart`, l'application obtient le même objet via `sync.getSession(id)`.
+
+En mode **centralisé**, P2PSync envoie automatiquement le `fullState` (via `getLocalState()`) après chaque `processAction()`. `broadcastState()` n'est nécessaire que pour les envois initiés par l'hôte hors réception d'action (ex : début de partie, timer, changement d'état unilatéral).
 
 ```js
 // Accès A — depuis le handler (autonomie locale)
@@ -578,8 +601,7 @@ const gameHandler = {
         if (this.isValidMove(action)) {
             this.board = applyMove(this.board, action);
         }
-        // Hôte : diffuse le nouvel état après le coup
-        this.ctrl.broadcastState();
+        // P2PSync envoie automatiquement le fullState après cet appel (centralisé)
     },
 
     getLocalState() {
@@ -591,6 +613,12 @@ const gameHandler = {
         this.board = state.board;
         this.currentTurn = state.turn;
         this.render();
+    },
+
+    // Envoi initié par l'hôte (pas en réaction à une action)
+    startGame() {
+        this.board = initialBoard();
+        this.ctrl.broadcastState();
     },
 
     onPeerAbsent() {
@@ -677,6 +705,7 @@ Chaque message envoyé par P2PSync porte l'identifiant de la session cible. P2PS
 ```js
 { _ctrl: 'sessionCreate', id: 'game', mode: 'centralisé', fps: 30 }
 { _ctrl: 'sessionReady',  id: 'game' }
+{ _ctrl: 'sessionSetFps', id: 'game', fps: 0 }
 { _ctrl: 'sessionEnd',    id: 'game' }
 ```
 
@@ -866,17 +895,17 @@ P2PSync surveille la réception de données (tous flux confondus : `_presence`, 
 
 ```js
 // Guard passe à OPEN (pair absent)
-sync.onPresenceLost = () => {
+sync.onPeerAbsent = () => {
     showStatus('Pair inactif');
 };
 
 // Guard revient à CLOSED (pair de retour)
-sync.onPresenceBack = () => {
+sync.onPeerBack = () => {
     showStatus('Pair connecté');
 };
 ```
 
-Ces callbacks opèrent au niveau P2PSync (une seule fois). Les handlers de session reçoivent les mêmes transitions via `onPeerAbsent()` / `onPeerBack()` (par session).
+Mêmes noms à deux niveaux : `sync.onPeerAbsent` / `sync.onPeerBack` (P2PSync, une seule fois) et `handler.onPeerAbsent()` / `handler.onPeerBack()` (par session). Le contexte (sync vs handler) distingue le niveau.
 
 La SM du guard de présence (HALF_OPEN / CLOSED / OPEN) et son intégration dans la SM de P2PSync sont décrites dans la section **Machine à états de P2PSync**.
 
@@ -911,8 +940,8 @@ Chaque couche ajoute des garanties sans exposer les détails de la couche infér
 | **P2P** | Peer-to-Peer — communication directe entre deux pairs, sans serveur intermédiaire pour les données |
 | **RTT** | Round Trip Time — temps d'aller-retour d'un message entre deux pairs |
 | **SDP** | Session Description Protocol — format texte décrivant les capacités média/données d'un pair (codecs, protocoles, paramètres réseau). Échangé lors de la négociation WebRTC |
-| **SessionCtrl** | Objet de contrôle d'une session, transmis au handler via `onStart(ctrl)` et accessible à l'application via `sync.getSession(id)`. Expose `setFps`, `broadcastState`, `sendAction`, `sendMessage` |
 | **Session** | Canal logique multiplexé sur un transport unique, défini par son mode (centralisé/indépendant/collaboratif) et son fps. Identifié par un nom unique, géré par un handler applicatif |
+| **SessionCtrl** | Objet de contrôle d'une session, transmis au handler via `onStart(ctrl)` et accessible à l'application via `sync.getSession(id)`. Expose `setFps`, `broadcastState`, `sendAction`, `sendMessage` |
 | **SHA-256** | Algorithme de hachage cryptographique utilisé par pacpam pour l'authentification mutuelle des pairs |
 | **SM** | State Machine — machine à états finis qui gouverne le cycle de vie d'une connexion dans `NetworkManager` |
 | **STUN** | Session Traversal Utilities for NAT — serveur léger qui permet à un pair de découvrir son IP publique et son port, nécessaire pour traverser un NAT |
