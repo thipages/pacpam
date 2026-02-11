@@ -55,12 +55,14 @@ Le handler est un objet fourni par l'application pour chaque session. Contrat ci
 | `applyRemoteState(state)` | oui | réception `fullState` ou `localState` |
 | `processAction(action)` | oui | réception `action` (hôte), prédiction locale (guest) |
 | `onMessage(message)` | oui | réception `message` (sessions indépendantes) |
-| `onStart()` | oui | session passe en CONNECTED |
+| `onStart(ctrl)` | oui | session passe en CONNECTED. Reçoit le `SessionCtrl` |
 | `onEnd()` | oui | session passe en DISCONNECTED |
 | `onPeerAbsent()` | oui | guard présence passe à OPEN |
 | `onPeerBack()` | oui | guard présence revient à CLOSED |
 
 Toutes les méthodes sont optionnelles — seules celles pertinentes pour le mode/fps de la session sont appelées.
+
+`SessionCtrl` (reçu dans `onStart`, aussi via `sync.getSession(id)`) : `setFps(n)`, `broadcastState()`, `sendAction(action)`, `sendMessage(message)`.
 
 ## 4. Architecture — modes de communication *(décidé)*
 

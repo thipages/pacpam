@@ -510,7 +510,7 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 | `applyRemoteState(state)` | `(object) → void` | Applique l'état reçu du pair distant |
 | `processAction(action)` | `(object) → void` | Traite une action reçue (hôte) ou prédiction locale (guest) |
 | `onMessage(message)` | `(object) → void` | Reçoit un message discret (sessions indépendantes) |
-| `onStart()` | `() → void` | Session passe en CONNECTED |
+| `onStart(ctrl)` | `(SessionCtrl) → void` | Session passe en CONNECTED. Reçoit l'objet de contrôle |
 | `onEnd()` | `() → void` | Session passe en DISCONNECTED (nettoyage) |
 | `onPeerAbsent()` | `() → void` | Guard : le pair ne répond plus (présence perdue) |
 | `onPeerBack()` | `() → void` | Guard : le pair répond à nouveau |
@@ -528,11 +528,49 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 | `onPeerAbsent()` | les deux | les deux | les deux | les deux |
 | `onPeerBack()` | les deux | les deux | les deux | les deux |
 
+#### SessionCtrl — contrôle de session
+
+`onStart(ctrl)` reçoit un objet **SessionCtrl** qui permet au handler de piloter sa propre session. Le même objet est accessible depuis l'application via `sync.getSession(id)`.
+
+```
+SessionCtrl {
+    setFps(n)                // Changer le fps à chaud (0 = arrêter la boucle)
+    broadcastState()         // Envoyer getLocalState() immédiatement (hors boucle)
+    sendAction(action)       // Envoyer une action discrète (centralisé, guest → hôte)
+    sendMessage(message)     // Envoyer un message discret (indépendant, bidirectionnel)
+    fps                      // fps courant (lecture seule)
+    mode                     // mode de la session (lecture seule)
+    id                       // identifiant de la session (lecture seule)
+}
+```
+
+| Méthode | centralisé | indépendant |
+|---------|:-:|:-:|
+| `setFps(n)` | les deux | les deux |
+| `broadcastState()` | hôte | les deux |
+| `sendAction(action)` | guest | — |
+| `sendMessage(message)` | — | les deux |
+
+**Deux portes d'accès, même objet** : le handler reçoit `ctrl` dans `onStart`, l'application obtient le même objet via `sync.getSession(id)`. Si les deux modifient le fps simultanément, c'est la responsabilité du développeur de coordonner (comme tout état partagé).
+
+```js
+// Accès A — depuis le handler (autonomie locale)
+onStart(ctrl) { this.ctrl = ctrl; }
+onPeerAbsent() { this.ctrl.setFps(0); }
+
+// Accès B — depuis l'application (orchestration globale)
+sync.getSession('game').setFps(0);
+```
+
 #### Exemple — handler de jeu tour par tour (centralisé, fps = 0)
 
 ```js
 const gameHandler = {
     board: initialBoard(),
+
+    onStart(ctrl) {
+        this.ctrl = ctrl;
+    },
 
     processAction(action) {
         // Hôte : valide et applique le coup
@@ -540,6 +578,8 @@ const gameHandler = {
         if (this.isValidMove(action)) {
             this.board = applyMove(this.board, action);
         }
+        // Hôte : diffuse le nouvel état après le coup
+        this.ctrl.broadcastState();
     },
 
     getLocalState() {
@@ -553,6 +593,14 @@ const gameHandler = {
         this.render();
     },
 
+    onPeerAbsent() {
+        this.showPauseOverlay();
+    },
+
+    onPeerBack() {
+        this.hidePauseOverlay();
+    },
+
     onEnd() {
         this.board = null;
     }
@@ -563,8 +611,17 @@ const gameHandler = {
 
 ```js
 const chatHandler = {
+    onStart(ctrl) {
+        this.ctrl = ctrl;
+    },
+
     onMessage(message) {
         displayMessage(message.author, message.text);
+    },
+
+    // Méthode appelée par l'UI de l'application
+    send(text) {
+        this.ctrl.sendMessage({ author: myName, text });
     },
 
     onEnd() {
@@ -854,6 +911,7 @@ Chaque couche ajoute des garanties sans exposer les détails de la couche infér
 | **P2P** | Peer-to-Peer — communication directe entre deux pairs, sans serveur intermédiaire pour les données |
 | **RTT** | Round Trip Time — temps d'aller-retour d'un message entre deux pairs |
 | **SDP** | Session Description Protocol — format texte décrivant les capacités média/données d'un pair (codecs, protocoles, paramètres réseau). Échangé lors de la négociation WebRTC |
+| **SessionCtrl** | Objet de contrôle d'une session, transmis au handler via `onStart(ctrl)` et accessible à l'application via `sync.getSession(id)`. Expose `setFps`, `broadcastState`, `sendAction`, `sendMessage` |
 | **Session** | Canal logique multiplexé sur un transport unique, défini par son mode (centralisé/indépendant/collaboratif) et son fps. Identifié par un nom unique, géré par un handler applicatif |
 | **SHA-256** | Algorithme de hachage cryptographique utilisé par pacpam pour l'authentification mutuelle des pairs |
 | **SM** | State Machine — machine à états finis qui gouverne le cycle de vie d'une connexion dans `NetworkManager` |
