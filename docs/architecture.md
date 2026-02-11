@@ -541,7 +541,7 @@ Le tableau indique **quand** P2PSync appelle chaque méthode automatiquement. «
 | Méthode | centralisé, fps = 0 | centralisé, fps > 0 | indépendant, fps = 0 | indépendant, fps > 0 |
 |---------|:-:|:-:|:-:|:-:|
 | `getLocalState()` | après processAction + broadcastState | idem + boucle fps | broadcastState | boucle fps + broadcastState |
-| `applyRemoteState()` | guest | guest | — | les deux |
+| `applyRemoteState()` | guest | les deux | `broadcastState` | les deux |
 | `processAction()` | hôte (+guest prédiction) | hôte (+guest prédiction) | — | — |
 | `onMessage()` | — | — | les deux | les deux |
 | `onStart()` | les deux | les deux | les deux | les deux |
@@ -667,7 +667,7 @@ P2PSync définit exactement **4 types de messages de données**. Chaque type n'e
 | `action` | Commande envoyée à l'hôte pour traitement | centralisé uniquement | Guest → Hôte | Discret (à la demande) |
 | `fullState` | Le fullState autoritaire diffusé par l'hôte | centralisé uniquement | Hôte → Guest | Discret (`broadcastState`) ou continu (boucle fps) |
 | `message` | Message libre entre pairs égaux | indépendant uniquement | Pair → Pair (bidirectionnel) | Discret (à la demande) |
-| `localState` | État local partagé périodiquement | centralisé et indépendant | Pair → Pair (bidirectionnel) | Continu (boucle fps) |
+| `localState` | État local partagé | centralisé et indépendant | Guest → Hôte (centralisé) · Pair ↔ Pair (indépendant) | Continu (boucle fps) ou `broadcastState()` |
 
 #### Types valides par configuration de session
 
@@ -676,9 +676,9 @@ P2PSync définit exactement **4 types de messages de données**. Chaque type n'e
 | `action` | guest → hôte | guest → hôte | — | — |
 | `fullState` | hôte → guest | hôte → guest | — | — |
 | `message` | — | — | les deux | les deux |
-| `localState` | — | les deux | — | les deux |
+| `localState` | — | guest → hôte | `broadcastState` | les deux |
 
-Un `message` envoyé dans une session centralisée est rejeté. Une `action` envoyée dans une session indépendante est rejetée. Un `localState` envoyé dans une session à fps = 0 est rejeté. Cette validation stricte garantit que chaque session respecte son contrat.
+Un `message` envoyé dans une session centralisée est rejeté. Une `action` envoyée dans une session indépendante est rejetée. Un `localState` est rejeté en session centralisée à fps = 0 (seules les actions discrètes et le fullState circulent). En session indépendante à fps = 0, `localState` n'est émis que via `broadcastState()`. Cette validation stricte garantit que chaque session respecte son contrat.
 
 ### Format des messages sur le fil
 
