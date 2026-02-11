@@ -39,6 +39,9 @@ export class P2PSync {
     this.onPeerBack = null;
     this.onSessionCreate = null;  // guest : (id, config) => handler
     this.onSessionStateChange = null; // (sessionId, state) => void
+    this.presenceData = null;
+    this.onPresence = null;
+    this.onPresenceSuspensionChange = null;
 
     // Câbler la SM P2PSync
     this.sm.onTransition = (from, to, event) => {
@@ -104,6 +107,11 @@ export class P2PSync {
     this.#destroySession(session);
   }
 
+  /** Définit les données de présence locales */
+  setPresence(data) {
+    this.presenceData = data;
+  }
+
   #initiateSession(session) {
     session.sm.onTransition = (from, to) => {
       this.onSessionStateChange?.(session.id, to);
@@ -129,6 +137,7 @@ export class P2PSync {
     session.sm.send('END');
     session.handler?.onEnd?.();
     this.sessions.delete(session.id);
+    this.#updatePresenceSuspension();
   }
 
   #onSyncConnected() {
@@ -142,6 +151,8 @@ export class P2PSync {
         this.#initiateSession(this.sessions.get(id));
       }
     }
+    // Les deux côtés : démarrer _presence
+    this.#startPresence();
   }
 
   #onSyncDisconnected() {
@@ -161,6 +172,56 @@ export class P2PSync {
       }
     } else {
       this.sessions.clear();
+    }
+  }
+
+  // --- Présence interne ---
+
+  #makePresenceHandler() {
+    return {
+      getLocalState: () => this.presenceData ?? {},
+      applyRemoteState: (state) => { this.onPresence?.(state); }
+    };
+  }
+
+  #startPresence() {
+    const handler = this.#makePresenceHandler();
+    const session = new Session('_presence', 'independent', 0.5, handler);
+    this.sessions.set('_presence', session);
+    session.sm.onTransition = (from, to) => {
+      this.onSessionStateChange?.('_presence', to);
+    };
+    session.sm.send('CREATE');
+    const ctrl = new SessionCtrl(
+      session,
+      (data) => this.transport.send(data),
+      true,
+      () => {}
+    );
+    session.ctrl = ctrl;
+    session.sm.send('READY');
+    this.#startSessionSync(session);
+  }
+
+  #updatePresenceSuspension() {
+    const presence = this.sessions.get('_presence');
+    if (!presence || presence.state !== 'CONNECTED') return;
+
+    let hasHighFps = false;
+    for (const [id, session] of this.sessions) {
+      if (id === '_presence') continue;
+      if (session.state === 'CONNECTED' && session.fps > 0.5) {
+        hasHighFps = true;
+        break;
+      }
+    }
+
+    const targetFps = hasHighFps ? 0 : 0.5;
+    if (presence.fps !== targetFps) {
+      presence.fps = targetFps;
+      this.#stopSessionSync(presence);
+      if (targetFps > 0) this.#startSessionSync(presence);
+      this.onPresenceSuspensionChange?.(targetFps === 0);
     }
   }
 
@@ -193,6 +254,7 @@ export class P2PSync {
     this.#sendCtrl({ _ctrl: 'sessionSetFps', id: session.id, fps });
     this.#stopSessionSync(session);
     if (fps > 0) this.#startSessionSync(session);
+    this.#updatePresenceSuspension();
   }
 
   // --- Routage des messages ---
@@ -236,6 +298,7 @@ export class P2PSync {
         this.#sendCtrl({ _ctrl: 'sessionReady', id: data.id });
         this.#activateSession(session);
         if (session.fps > 0) this.#startSessionSync(session);
+        this.#updatePresenceSuspension();
         break;
       }
       case 'sessionReady': {
@@ -244,6 +307,7 @@ export class P2PSync {
         if (!session) return;
         this.#activateSession(session);
         if (session.fps > 0) this.#startSessionSync(session);
+        this.#updatePresenceSuspension();
         break;
       }
       case 'sessionSetFps': {
@@ -252,6 +316,7 @@ export class P2PSync {
         session.fps = data.fps;
         this.#stopSessionSync(session);
         if (data.fps > 0) this.#startSessionSync(session);
+        this.#updatePresenceSuspension();
         break;
       }
       case 'sessionEnd': {
@@ -365,4 +430,8 @@ export class P2PSync {
   get isHost()      { return this.transport.isHost; }
   get state()       { return this.sm.current; }
   get isConnected() { return this.sm.is('CONNECTED'); }
+  get presenceSuspended() {
+    const p = this.sessions.get('_presence');
+    return p ? p.fps === 0 : false;
+  }
 }

@@ -150,3 +150,21 @@ Boucle continue, `setFps`, `broadcastState`, prédiction guest — le tout valid
 **Prédiction guest** : `sendAction` appelle `handler.processAction` localement avant d'envoyer au réseau.
 
 **App de test** : boutons Broadcast et Toggle fps (hôte uniquement). Boutons +1/−1 désactivés côté hôte (centralisé). Indicateur fps dans le titre de section.
+
+---
+
+### Phase 6 — Présence interne
+
+**Nouveau** : session interne `_presence` — heartbeat applicatif + données de présence.
+
+**`_presence`** : session indépendante à fps 0.5, créée automatiquement (sans handshake `_ctrl`) sur les deux pairs quand P2PSync passe en CONNECTED. Chaque tick envoie `presenceData` via `localState`, le pair distant reçoit via `onPresence`.
+
+**API publique** :
+- `sync.setPresence(data)` — stocke les données à envoyer au prochain tick
+- `sync.onPresence = (presence) => {}` — callback réception
+- `sync.onPresenceSuspensionChange = (suspended) => {}` — notification changement
+- `sync.presenceSuspended` — getter lecture seule
+
+**Suspension automatique** : quand au moins une session applicative a un `fps > 0.5`, `_presence` est suspendue (fps=0). Le guard de présence continue de fonctionner, nourri par les données des sessions actives. Quand toutes les sessions reviennent à `fps ≤ 0.5`, `_presence` reprend automatiquement.
+
+**App de test** : section « Présence » avec affichage pair distant, input de présence, indicateur suspension.
