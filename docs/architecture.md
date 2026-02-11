@@ -11,7 +11,7 @@ pacpam empile trois couches indépendantes. Chaque couche ne connaît que celle 
 ├─────────────────────────────────────────────────┤
 │  Couche 3 — Protocole                            │
 │  P2PSync : façade applicative, sessions multiples│
-│  discret/continu × dirigé/peer                   │
+│  mode (centralisé/indépendant) × fps             │
 ├─────────────────────────────────────────────────┤
 │  Couche 2 — Transport sécurisé                   │
 │  NetworkManager : SM, auth, ping, circuit breaker│
@@ -207,22 +207,38 @@ C'est le même contrat que `conn.send()` / `conn.on('data')` de PeerJS, enrichi 
 
 P2PSync gère des **sessions** : des canaux logiques multiplexés sur le transport unique fourni par la couche 2. Chaque session a son propre mode de communication et son propre handler applicatif. Plusieurs sessions coexistent simultanément sur la même connexion.
 
+### Niveaux d'autorité
+
+L'autorité dans pacpam s'exerce à deux niveaux distincts.
+
+#### Niveau administratif (connexion + sessions) — toujours centralisé
+
+L'**hôte** gère l'administration. Ce rôle est déterminé à l'établissement de la connexion (couche 2) et ne change jamais :
+
+- **Hôte** = celui qui reçoit la connexion (`peer.on('connection')`)
+- **Guest** = celui qui l'initie (`peer.connect(peerId)`)
+
+L'hôte décide de la création et de la destruction de toutes les sessions, quel que soit leur mode. Même dans une session indépendante où les deux pairs sont égaux pour les données, c'est l'hôte qui décide de l'existence de cette session.
+
+#### Niveau données — configurable par session
+
+Chaque session définit son propre **mode** pour l'échange de données :
+
+| Mode | Qui fait foi | Flux de données | Statut |
+|------|-------------|----------------|--------|
+| **centralisé** | L'hôte détient l'état de vérité | Guest → action → Hôte → le fullState autoritaire → Guest | Implémenté |
+| **indépendant** | Chacun son état, pas de conflit | Pair → Pair (chacun envoie le sien, bidirectionnel) | Implémenté |
+| **collaboratif** | Personne — convergence (CRDT/OT) | Pair → Pair (même donnée, conflits possibles) | Réservé |
+
 ### Deux dimensions de communication
 
-Une session est caractérisée par deux dimensions : son **autorité** et son **fps**.
-
-**Autorité** — qui détient la vérité :
-
-| Mode | Modèle | Flux de données |
-|------|--------|----------------|
-| **Dirigé** (host) | L'hôte détient l'état de vérité | Guest → action → Hôte → état autoritaire → Guest |
-| **Non dirigé** (peer) | Les deux pairs sont égaux | Pair ↔ Pair (bidirectionnel, symétrique) |
+Une session est caractérisée par son **mode** et son **fps**.
 
 **fps** — paramètre qui contrôle la boucle continue :
 
 | fps | Comportement |
 |-----|-------------|
-| `0` | **Discret seul** — envois à la demande uniquement (actions, messages) |
+| `0` | **Discret seul** — envois à la demande uniquement |
 | `> 0` | **Discret + continu** — la boucle de synchronisation tourne à la fréquence donnée, ET les envois ponctuels restent possibles |
 
 Une session supporte **toujours** les envois discrets. Le `fps` contrôle uniquement si une boucle continue de synchronisation d'état tourne en plus. `setFps(n)` permet de changer ce paramètre à chaud sur une session active :
@@ -233,34 +249,35 @@ fps = 30  →  on lance le temps réel (la boucle démarre, le discret reste dis
 fps = 0   →  retour au tour par tour (la boucle s'arrête)
 ```
 
-**Important** : la **sémantique** du discret dépend de l'autorité de la session :
+**Important** : la **sémantique** du discret dépend du mode de la session :
 
-| Autorité | Discret signifie… | Méthode | Direction |
-|----------|-------------------|---------|-----------|
-| **host** (dirigé) | **Action** — commande traitée par l'hôte | `sendAction()` → `processAction()` | Guest → Hôte (asymétrique) |
-| **peer** (non dirigé) | **Message** — échange libre entre pairs | `sendMessage()` → `onMessage()` | Pair ↔ Pair (symétrique) |
+| Mode | Discret signifie… | Méthode | Direction |
+|------|-------------------|---------|-----------|
+| **centralisé** | **Action** — commande traitée par l'hôte | `sendAction()` → `processAction()` | Guest → Hôte (asymétrique) |
+| **indépendant** | **Message** — échange libre entre pairs | `sendMessage()` → `onMessage()` | Pair → Pair (symétrique) |
 
-C'est pourquoi un chat (peer) et un jeu (host) nécessitent des sessions distinctes : un message de chat envoyé dans une session host serait traité comme une action de jeu. Chaque session a son propre handler et sa propre sémantique.
+C'est pourquoi un chat (indépendant) et un jeu (centralisé) nécessitent des sessions distinctes : un message de chat envoyé dans une session centralisée serait traité comme une action de jeu. Chaque session a son propre handler et sa propre sémantique.
 
-En revanche, deux fonctions de même autorité **peuvent** être fusionnées dans une seule session. Une session peer à fps > 0 supporte à la fois l'état continu (`getLocalState` / `applyRemoteState`) et les messages discrets (`onMessage`). Par exemple, une session "cursors" (peer, fps 15) peut aussi transporter des messages de chat via `onMessage`, sans nécessiter une session "chat" séparée. Le découpage en sessions est un **choix applicatif** — séparation des préoccupations vs économie de sessions — pas une contrainte de P2PSync.
+En revanche, deux fonctions de même mode **peuvent** être fusionnées dans une seule session. Une session indépendante à fps > 0 supporte à la fois l'état continu (`getLocalState` / `applyRemoteState`) et les messages discrets (`onMessage`). Par exemple, une session "cursors" (indépendant, fps 15) peut aussi transporter des messages de chat via `onMessage`, sans nécessiter une session "chat" séparée. Le découpage en sessions est un **choix applicatif** — séparation des préoccupations vs économie de sessions — pas une contrainte de P2PSync.
 
 Les deux dimensions se combinent :
 
 | | fps = 0 (discret) | fps > 0 (discret + continu) |
 |---|---|---|
-| **Dirigé** | Jeu tour par tour, quiz | Jeu temps réel |
-| **Non dirigé** | Chat, notifications | Curseurs, présence, co-édition |
+| **centralisé** | Jeu tour par tour, quiz | Jeu temps réel |
+| **indépendant** | Chat, notifications | Curseurs, présence |
+| **collaboratif** | *(réservé)* | *(réservé)* |
 
 ### Concept de session
 
-Une **session** est un canal logique, identifié par un nom unique, défini par son autorité et son fps. C'est l'unité de base de toute communication à travers P2PSync.
+Une **session** est un canal logique, identifié par un nom unique, défini par son mode et son fps. C'est l'unité de base de toute communication à travers P2PSync.
 
 ```
 Session {
-    id        : string            // identifiant unique ("chat", "game", "cursors")
-    authority : 'host' | 'peer'   // qui fait foi
-    fps       : number            // 0 = discret seul, > 0 = + boucle continue
-    handler   : SessionHandler    // objet duck-typed fourni par l'application
+    id      : string                                          // identifiant unique
+    mode    : 'centralisé' | 'indépendant' | 'collaboratif'  // mode données
+    fps     : number                                          // 0 = discret seul, > 0 = + boucle continue
+    handler : SessionHandler                                  // objet duck-typed fourni par l'application
 }
 ```
 
@@ -272,7 +289,7 @@ L'application peut créer **autant de sessions que nécessaire**. Elles sont mul
 
 ```
 P2PSync
-   └── "chat"    peer (fps 0)
+   └── "chat"    indépendant (fps 0)
 ```
 
 Une seule session. Les deux pairs envoient et reçoivent des messages librement. Pas de boucle continue. Le handler implémente simplement `onMessage(msg)`.
@@ -281,31 +298,31 @@ Une seule session. Les deux pairs envoient et reçoivent des messages librement.
 
 ```
 P2PSync
-   ├── "chat"    peer (fps 0)
-   └── "game"    host (fps 0)
+   ├── "chat"    indépendant (fps 0)
+   └── "game"    centralisé  (fps 0)
 ```
 
-Deux sessions. Le chat est indépendant du jeu. Dans la session "game", le guest envoie ses coups (actions discrètes), l'hôte les valide via `processAction(action)`, met à jour l'état du plateau, et le renvoie au guest via `broadcastState()`.
+Deux sessions. Le chat est indépendant du jeu. Dans la session "game", le guest envoie ses coups (actions discrètes), l'hôte les valide via `processAction(action)`, met à jour l'état du plateau, et renvoie le `fullState` au guest via `broadcastState()`.
 
 #### Scénario 3 — Jeu temps réel avec chat et curseurs
 
 ```
 P2PSync
-   ├── "chat"      peer (fps 0)
-   ├── "game"      host (fps 30)
-   └── "cursors"   peer (fps 15)
+   ├── "chat"      indépendant (fps 0)
+   ├── "game"      centralisé  (fps 30)
+   └── "cursors"   indépendant (fps 15)
 ```
 
-Trois sessions simultanées. La session "game" tourne à 30 fps : l'hôte envoie l'état autoritaire à chaque tick, le guest envoie ses inputs (`peerState`), et les actions discrètes (commandes du joueur) restent possibles à tout moment. La session "cursors" partage la position de chaque pair à 15 fps.
+Trois sessions simultanées. La session "game" tourne à 30 fps : l'hôte envoie le `fullState` autoritaire à chaque tick, le guest envoie son `localState` (inputs), et les actions discrètes (commandes du joueur) restent possibles à tout moment. La session "cursors" partage la position de chaque pair à 15 fps.
 
-Note : "chat" et "cursors" sont toutes deux peer — elles pourraient être fusionnées en une seule session (les messages de chat passeraient par `onMessage` dans le handler "cursors"). Ici elles sont séparées par choix de clarté, pas par contrainte technique. En revanche, "game" (host) ne peut pas absorber le chat : un message y serait traité comme une action de jeu.
+Note : "chat" et "cursors" sont toutes deux indépendantes — elles pourraient être fusionnées en une seule session (les messages de chat passeraient par `onMessage` dans le handler "cursors"). Ici elles sont séparées par choix de clarté, pas par contrainte technique. En revanche, "game" (centralisé) ne peut pas absorber le chat : un message y serait traité comme une action de jeu.
 
 #### Scénario 4 — Quiz / trivia
 
 ```
 P2PSync
-   ├── "quiz"    host (fps 0)
-   └── "chat"    peer (fps 0)
+   ├── "quiz"    centralisé  (fps 0)
+   └── "chat"    indépendant (fps 0)
 ```
 
 L'hôte envoie les questions, le guest envoie les réponses, l'hôte envoie les résultats. Tout est discret (fps 0). Le chat permet la discussion libre en parallèle.
@@ -314,22 +331,19 @@ L'hôte envoie les questions, le guest envoie les réponses, l'hôte envoie les 
 
 ```
 P2PSync
-   ├── "editor"     peer (fps 5)
-   └── "presence"   peer (fps 2)
+   ├── "editor"     indépendant (fps 5)
+   └── "presence"   indépendant (fps 2)
 ```
 
 La session "editor" synchronise l'état à 5 fps (position du curseur, sélection), et les opérations discrètes (insertion, suppression de texte) sont envoyées à la demande en plus de la boucle. La session "presence" partage les indicateurs de statut (en train de taper, en ligne/absent) à faible fréquence.
+
+Note : un éditeur véritablement collaboratif (deux pairs modifiant le même document) nécessiterait le mode **collaboratif** (réservé, hors scope). Ici le mode indépendant convient car chaque pair a son propre curseur et ses propres indicateurs.
 
 ### Cycle de vie des sessions
 
 #### Qui crée les sessions ?
 
-**L'hôte crée toutes les sessions.** Le rôle hôte/guest est déterminé à l'établissement de la connexion (couche 2) et ne change jamais :
-
-- **Hôte** = celui qui reçoit la connexion (`peer.on('connection')`)
-- **Guest** = celui qui l'initie (`peer.connect(peerId)`)
-
-Même pour les sessions `peer` (non dirigées), c'est l'hôte qui décide de leur existence. Une fois créée, les deux pairs sont égaux dans les échanges — mais la décision de créer ou détruire la session appartient à l'hôte.
+**L'hôte crée toutes les sessions** (niveau administratif, toujours centralisé). Même pour les sessions indépendantes où les deux pairs sont égaux pour les données, c'est l'hôte qui décide de leur existence.
 
 Ce choix est cohérent avec le fonctionnement des couches inférieures : il y a toujours un pair qui « accueille » et un pair qui « rejoint ». L'hôte est le point de coordination naturel.
 
@@ -342,27 +356,27 @@ Hôte                                        Guest
   │                                            │
   │  ┄┄ connexion CONNECTED ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ │
   │                                            │
-  │  _presence ACTIVE (auto, les deux pairs)   │  _presence ACTIVE
+  │  _presence CONNECTED (auto, les deux pairs) │  _presence CONNECTED
   │  → heartbeat 0.5 fps démarre              │  → heartbeat 0.5 fps démarre
   │                                            │
   │── { _ctrl: 'sessionCreate',               │
   │     id: 'chat',                            │
-  │     authority: 'peer',                     │
+  │     mode: 'indépendant',                   │
   │     fps: 0 }  ──────────────────────────→ │
   │                                            │  app.createHandler('chat', config)
   │                                            │  → handler instancié
   │← { _ctrl: 'sessionReady', id: 'chat' } ──│
   │                                            │
-  │  session "chat" ACTIVE                     │  session "chat" ACTIVE
+  │  session "chat" CONNECTED                  │  session "chat" CONNECTED
   │                                            │
   │── { _ctrl: 'sessionCreate',               │
   │     id: 'game',                            │
-  │     authority: 'host',                     │
+  │     mode: 'centralisé',                    │
   │     fps: 30 }  ──────────────────────────→ │
   │                                            │  app.createHandler('game', config)
   │← { _ctrl: 'sessionReady', id: 'game' } ──│
   │                                            │
-  │  session "game" ACTIVE (boucle 30fps)      │  session "game" ACTIVE
+  │  session "game" CONNECTED (boucle 30fps)   │  session "game" CONNECTED
   │  _presence SUSPENDUE (game fps > 0.5)      │  _presence SUSPENDUE
 ```
 
@@ -373,20 +387,20 @@ Les messages préfixés `_ctrl` sont des messages de contrôle internes à P2PSy
 ```
                 sessionCreate envoyé/reçu
                         │
-INACTIVE ──────────→ PENDING ──────────→ ACTIVE ──────────→ ENDED
-                        │    sessionReady     │                 │
-                        │                     │  sessionEnd     │
-                        │                     └────────────────→│
-                        │         connexion perdue              │
-                        └──────────────────────────────────────→│
+  IDLE ──────────→ CONNECTING ──────→ CONNECTED ──────→ DISCONNECTED
+                        │   sessionReady    │                     │
+                        │                   │  sessionEnd         │
+                        │                   └───────────────────→ │
+                        │        connexion perdue                 │
+                        └────────────────────────────────────────→│
 ```
 
 | État | Description |
 |------|-------------|
-| **INACTIVE** | La session n'existe pas encore |
-| **PENDING** | Hôte : `sessionCreate` envoyé, en attente du `sessionReady`. Guest : handler en cours d'instanciation |
-| **ACTIVE** | Les deux pairs ont un handler actif. Les messages de données circulent. La boucle continue tourne (si applicable). La présence du pair agit comme **guard** : si le pair devient ABSENT, les handlers en sont notifiés (`onPeerAbsent()` / `onPeerBack()`) et peuvent adapter leur comportement (pause de la boucle, affichage d'un indicateur, etc.) sans que la session ne quitte l'état ACTIVE |
-| **ENDED** | Session terminée. Handlers nettoyés. Peut être recréée plus tard si nécessaire |
+| **IDLE** | La session n'existe pas encore |
+| **CONNECTING** | Hôte : `sessionCreate` envoyé, en attente du `sessionReady`. Guest : handler en cours d'instanciation |
+| **CONNECTED** | Les deux pairs ont un handler actif. Les messages de données circulent. La boucle continue tourne (si applicable). Le guard de présence surveille le pair : si le guard passe à OPEN (pair absent), les handlers en sont notifiés (`onPeerAbsent()` / `onPeerBack()`) sans que la session ne quitte l'état CONNECTED |
+| **DISCONNECTED** | Session terminée. Handlers nettoyés. Peut être recréée plus tard si nécessaire |
 
 #### Destruction
 
@@ -407,7 +421,7 @@ Les sessions ne sont pas toutes créées au début de la connexion. L'hôte peut
 ```
 Connexion établie
   │
-  ├── _presence ACTIVE (automatique, les deux pairs)
+  ├── _presence CONNECTED (automatique, les deux pairs)
   │
   ├── Hôte crée "chat" (immédiat)
   │
@@ -428,7 +442,7 @@ Connexion établie
 
 ### Flux de données par type de session
 
-#### Session dirigée, fps = 0 (jeu tour par tour)
+#### Session centralisée, fps = 0 (jeu tour par tour)
 
 ```
 Guest                                          Hôte
@@ -436,29 +450,29 @@ Guest                                          Hôte
   │── { type: 'action', action } ───────────────→│  handler.processAction(action)
   │   handler.processAction(action)  ←prédiction │  state = handler.getLocalState()
   │                                              │
-  │←── { type: 'fullState', state } ────────────│  (état autoritaire)
+  │←── { type: 'fullState', state } ────────────│  (le fullState autoritaire)
   │  handler.applyRemoteState(state)             │
 ```
 
-Le guest envoie une action, applique une **prédiction locale** (appel optionnel à `processAction` côté guest), puis reçoit l'état autoritaire de l'hôte qui corrige toute divergence.
+Le guest envoie une action, applique une **prédiction locale** (appel optionnel à `processAction` côté guest), puis reçoit le `fullState` autoritaire de l'hôte qui corrige toute divergence.
 
-#### Session dirigée, fps > 0 (jeu temps réel)
+#### Session centralisée, fps > 0 (jeu temps réel)
 
 ```
 Guest                                          Hôte
   │                                              │
   │── { type: 'action', action } ───────────────→│  (ponctuel, discret)
   │                                              │
-  │── { type: 'peerState', state } ────────────→│  (boucle fps — inputs guest)
-  │←── { type: 'fullState', state } ────────────│  (boucle fps — état autoritaire)
+  │── { type: 'localState', state } ───────────→│  (boucle fps — inputs guest)
+  │←── { type: 'fullState', state } ────────────│  (boucle fps — le fullState autoritaire)
   │                                              │
-  │── { type: 'peerState', state } ────────────→│  (tick suivant)
+  │── { type: 'localState', state } ───────────→│  (tick suivant)
   │←── { type: 'fullState', state } ────────────│  (tick suivant)
 ```
 
-Deux flux superposés : les actions discrètes du guest et la boucle continue bidirectionnelle. L'hôte reçoit les inputs du guest (`peerState`) et renvoie l'état autoritaire (`fullState`) à chaque tick.
+Deux flux superposés : les actions discrètes du guest et la boucle continue. Le guest envoie son `localState` (inputs) et l'hôte renvoie le `fullState` autoritaire à chaque tick.
 
-#### Session non dirigée, fps = 0 (chat)
+#### Session indépendante, fps = 0 (chat)
 
 ```
 Pair A                                        Pair B
@@ -469,19 +483,19 @@ Pair A                                        Pair B
   │←── { type: 'message', payload } ────────────│
 ```
 
-Symétrique. Les deux pairs envoient et reçoivent librement, sans notion d'autorité.
+Symétrique. Les deux pairs envoient et reçoivent librement, sans notion d'autorité sur les données.
 
-#### Session non dirigée, fps > 0 (curseurs, présence)
+#### Session indépendante, fps > 0 (curseurs, présence)
 
 ```
 Pair A                                        Pair B
   │                                              │
-  │── { type: 'peerState', state } ────────────→│  handler.applyRemoteState(state)
-  │←── { type: 'peerState', state } ────────────│  (boucle fps)
+  │── { type: 'localState', state } ───────────→│  handler.applyRemoteState(state)
+  │←── { type: 'localState', state } ───────────│  (boucle fps)
   │                                              │
   │  handler.applyRemoteState(state)             │
-  │── { type: 'peerState', state } ────────────→│  (tick suivant)
-  │←── { type: 'peerState', state } ────────────│  (tick suivant)
+  │── { type: 'localState', state } ───────────→│  (tick suivant)
+  │←── { type: 'localState', state } ───────────│  (tick suivant)
 ```
 
 Symétrique. Chaque pair appelle `handler.getLocalState()` à chaque tick et envoie le résultat. Chaque pair reçoit l'état distant et appelle `handler.applyRemoteState()`.
@@ -495,15 +509,15 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 | `getLocalState()` | `() → object` | Retourne l'état local à envoyer (boucle continue ou `broadcastState()`) |
 | `applyRemoteState(state)` | `(object) → void` | Applique l'état reçu du pair distant |
 | `processAction(action)` | `(object) → void` | Traite une action reçue (hôte) ou prédiction locale (guest) |
-| `onMessage(message)` | `(object) → void` | Reçoit un message discret (sessions peer) |
-| `onStart()` | `() → void` | Session passe en ACTIVE |
-| `onEnd()` | `() → void` | Session passe en ENDED (nettoyage) |
+| `onMessage(message)` | `(object) → void` | Reçoit un message discret (sessions indépendantes) |
+| `onStart()` | `() → void` | Session passe en CONNECTED |
+| `onEnd()` | `() → void` | Session passe en DISCONNECTED (nettoyage) |
 | `onPeerAbsent()` | `() → void` | Guard : le pair ne répond plus (présence perdue) |
 | `onPeerBack()` | `() → void` | Guard : le pair répond à nouveau |
 
 #### Quelles méthodes pour quel type ?
 
-| Méthode | host, fps = 0 | host, fps > 0 | peer, fps = 0 | peer, fps > 0 |
+| Méthode | centralisé, fps = 0 | centralisé, fps > 0 | indépendant, fps = 0 | indépendant, fps > 0 |
 |---------|:-:|:-:|:-:|:-:|
 | `getLocalState()` | broadcastState | broadcastState + boucle fps | — | boucle fps |
 | `applyRemoteState()` | guest | guest | — | les deux |
@@ -514,7 +528,7 @@ L'application fournit un **handler** pour chaque session. C'est un objet JavaScr
 | `onPeerAbsent()` | les deux | les deux | les deux | les deux |
 | `onPeerBack()` | les deux | les deux | les deux | les deux |
 
-#### Exemple — handler de jeu tour par tour (host + discret)
+#### Exemple — handler de jeu tour par tour (centralisé, fps = 0)
 
 ```js
 const gameHandler = {
@@ -533,7 +547,7 @@ const gameHandler = {
     },
 
     applyRemoteState(state) {
-        // Guest : reçoit l'état autoritaire de l'hôte
+        // Guest : reçoit le fullState autoritaire
         this.board = state.board;
         this.currentTurn = state.turn;
         this.render();
@@ -545,7 +559,7 @@ const gameHandler = {
 };
 ```
 
-#### Exemple — handler de chat (peer + discret)
+#### Exemple — handler de chat (indépendant, fps = 0)
 
 ```js
 const chatHandler = {
@@ -563,23 +577,23 @@ const chatHandler = {
 
 P2PSync définit exactement **4 types de messages de données**. Chaque type n'est valide que pour certaines configurations de session. P2PSync rejette tout message dont le type ne correspond pas à la session cible.
 
-| Type | Sémantique | Autorité | Direction | Déclencheur |
-|------|-----------|----------|-----------|-------------|
-| `action` | Commande envoyée à l'hôte pour traitement | host uniquement | Guest → Hôte | Discret (à la demande) |
-| `fullState` | État autoritaire diffusé par l'hôte | host uniquement | Hôte → Guest | Discret (`broadcastState`) ou continu (boucle fps) |
-| `message` | Message libre entre pairs égaux | peer uniquement | Pair → Pair (bidirectionnel) | Discret (à la demande) |
-| `peerState` | État local partagé périodiquement | les deux | Pair → Pair (bidirectionnel) | Continu (boucle fps) |
+| Type | Sémantique | Mode | Direction | Déclencheur |
+|------|-----------|------|-----------|-------------|
+| `action` | Commande envoyée à l'hôte pour traitement | centralisé uniquement | Guest → Hôte | Discret (à la demande) |
+| `fullState` | Le fullState autoritaire diffusé par l'hôte | centralisé uniquement | Hôte → Guest | Discret (`broadcastState`) ou continu (boucle fps) |
+| `message` | Message libre entre pairs égaux | indépendant uniquement | Pair → Pair (bidirectionnel) | Discret (à la demande) |
+| `localState` | État local partagé périodiquement | centralisé et indépendant | Pair → Pair (bidirectionnel) | Continu (boucle fps) |
 
 #### Types valides par configuration de session
 
-| | host, fps = 0 | host, fps > 0 | peer, fps = 0 | peer, fps > 0 |
+| | centralisé, fps = 0 | centralisé, fps > 0 | indépendant, fps = 0 | indépendant, fps > 0 |
 |---|:-:|:-:|:-:|:-:|
 | `action` | guest → hôte | guest → hôte | — | — |
 | `fullState` | hôte → guest | hôte → guest | — | — |
 | `message` | — | — | les deux | les deux |
-| `peerState` | — | les deux | — | les deux |
+| `localState` | — | les deux | — | les deux |
 
-Un `message` envoyé dans une session host est rejeté. Une `action` envoyée dans une session peer est rejetée. Un `peerState` envoyé dans une session à fps = 0 est rejeté. Cette validation stricte garantit que chaque session respecte son contrat.
+Un `message` envoyé dans une session centralisée est rejeté. Une `action` envoyée dans une session indépendante est rejetée. Un `localState` envoyé dans une session à fps = 0 est rejeté. Cette validation stricte garantit que chaque session respecte son contrat.
 
 ### Format des messages sur le fil
 
@@ -588,59 +602,137 @@ Chaque message envoyé par P2PSync porte l'identifiant de la session cible. P2PS
 #### Messages de données (échangés entre handlers)
 
 ```js
-// Action discrète (guest → hôte, session dirigée)
+// Action discrète (guest → hôte, session centralisée)
 { _s: 'game', type: 'action', action: { move: 'e2e4' } }
 
-// État autoritaire (hôte → guest, session dirigée)
+// Le fullState autoritaire (hôte → guest, session centralisée)
 { _s: 'game', type: 'fullState', state: { board: [...], turn: 2 } }
 
-// État pair (boucle continue, bidirectionnel)
-{ _s: 'cursors', type: 'peerState', state: { x: 120, y: 340 } }
+// État local (boucle continue, bidirectionnel)
+{ _s: 'cursors', type: 'localState', state: { x: 120, y: 340 } }
 
-// Message discret (sessions peer, bidirectionnel)
+// Message discret (sessions indépendantes, bidirectionnel)
 { _s: 'chat', type: 'message', payload: { author: 'Alice', text: 'Salut !' } }
 ```
 
 #### Messages de contrôle (gérés par P2PSync, jamais exposés aux handlers)
 
 ```js
-{ _ctrl: 'sessionCreate', id: 'game', authority: 'host', fps: 30 }
+{ _ctrl: 'sessionCreate', id: 'game', mode: 'centralisé', fps: 30 }
 { _ctrl: 'sessionReady',  id: 'game' }
 { _ctrl: 'sessionEnd',    id: 'game' }
 ```
 
 Le champ `_s` identifie la session cible d'un message de données. Le champ `_ctrl` identifie les messages de contrôle internes. Ces deux préfixes sont réservés par P2PSync.
 
-### Remontée de la machine à états
+### Machine à états de P2PSync
 
-P2PSync remonte **toutes** les transitions de la SM de la couche 2 vers l'application. Rien n'est filtré — l'application dispose de l'information complète.
+P2PSync possède sa propre machine à états, construite au-dessus de la SM de connexion (couche 2). Elle expose **toujours** l'état exact de la couche inférieure, en y ajoutant un groupement et une sémantique propre.
 
-Pour simplifier l'usage courant, P2PSync ajoute un **groupe** à chaque transition :
+#### États groupés
 
-| Groupe | États SM correspondants | Signification |
-|--------|------------------------|---------------|
-| `connecting` | INITIALIZING, READY, CONNECTING, AUTHENTICATING | Connexion en cours d'établissement |
-| `connected` | CONNECTED | Connexion active, prêt à communiquer |
-| `disconnected` | Retour à IDLE (normal) | Connexion terminée proprement |
-| `error` | Retour à IDLE (sur erreur/timeout) | Connexion perdue ou échouée |
+| Groupe P2PSync | États couche 2 | Signification |
+|---|---|---|
+| **IDLE** | IDLE | Pas de connexion, aucune session |
+| **CONNECTING** | INITIALIZING, READY, CONNECTING, AUTHENTICATING | Connexion en cours |
+| **CONNECTED** | CONNECTED | Connecté — sessions possibles, guard actif |
+| **DISCONNECTED** | *(propre à P2PSync)* | Était connecté, connexion perdue |
+
+DISCONNECTED est un état propre à P2PSync. En couche 2, la déconnexion ramène à IDLE. P2PSync distingue « jamais connecté » (IDLE) de « connexion perdue » (DISCONNECTED).
+
+#### Transitions groupées
+
+```
+                    ┌───── échec ──────┐
+                    │ (jamais connecté) │
+IDLE ──────→ CONNECTING ──────→ CONNECTED ──────→ DISCONNECTED
+  ↑               ↑                                     │
+  │               └─────────── reconnexion ─────────────┘
+  └────────────── reset ────────────────────────────────┘
+```
+
+| Transition | Cause | Transitions couche 2 |
+|---|---|---|
+| IDLE → CONNECTING | Lancement de la connexion | IDLE → INITIALIZING |
+| CONNECTING → CONNECTED | Authentification réussie | AUTHENTICATING → CONNECTED |
+| CONNECTING → IDLE | Échec avant CONNECTED | Erreurs/timeouts → IDLE |
+| CONNECTED → DISCONNECTED | Connexion perdue | CONNECTED → IDLE (erreur/déconnexion) |
+| DISCONNECTED → CONNECTING | Tentative de reconnexion | IDLE → INITIALIZING |
+| DISCONNECTED → IDLE | Abandon / reset | — |
+
+Chaque transition de la couche 2 est remontée intégralement à l'application :
 
 ```js
 sync.onStateChange = (state, group, detail) => {
-    // state  : état SM exact ("AUTHENTICATING", "CONNECTED", ...)
-    // group  : groupe simplifié ("connecting", "connected", "disconnected", "error")
+    // state  : état couche 2 exact ("AUTHENTICATING", "CONNECTED", ...)
+    // group  : groupe P2PSync ("idle", "connecting", "connected", "disconnected")
     // detail : ID de transition et contexte ({ transition: 'c15', reason: 'PING_TIMEOUT' })
 
     if (group === 'connected') {
         showStatus('Connecté');
     } else if (group === 'connecting') {
         showStatus('Connexion en cours...');
-    } else if (group === 'error') {
-        showStatus(`Erreur : ${detail.reason}`);
+    } else if (group === 'disconnected') {
+        showStatus(`Déconnecté : ${detail.reason}`);
     }
 };
 ```
 
-L'application peut écouter `group` pour un usage simple, ou `state` / `detail.transition` pour un contrôle fin (ex: afficher une barre de progression pendant la connexion).
+L'application peut écouter `group` pour un usage simple, ou `state` / `detail.transition` pour un contrôle fin.
+
+#### Guard présence (sur CONNECTED)
+
+En état CONNECTED, P2PSync maintient un **guard de présence** — une SM interne qui suit le même formalisme que le circuit breaker (couche 2) :
+
+```
+                   données reçues
+HALF_OPEN ─────────────────────→ CLOSED
+    ↑                               │
+    │                               │ timeout sans données
+    │     données reçues            ▼
+    └─────────────────────────── OPEN
+```
+
+| État | Sémantique | Transition vers |
+|---|---|---|
+| **HALF_OPEN** | Incertain — en attente de confirmation (état initial, ou premier signe de vie après absence) | CLOSED (données confirmées) |
+| **CLOSED** | Pair présent — données reçues régulièrement | OPEN (timeout sans réception) |
+| **OPEN** | Pair absent — aucune donnée depuis le seuil configuré | HALF_OPEN (données reçues à nouveau) |
+
+Le guard ne vit que dans CONNECTED. Dès que P2PSync quitte CONNECTED, il est réinitialisé (HALF_OPEN à la prochaine connexion).
+
+Source du guard : toute donnée entrante — messages `_presence`, sessions continues, messages discrets. Le guard ne dépend pas d'une session spécifique. C'est pourquoi `_presence` est suspendue (et non le guard) quand une session applicative a un fps > 0.5.
+
+Les handlers de session sont notifiés des transitions du guard :
+- `onPeerAbsent()` : guard passe à OPEN
+- `onPeerBack()` : guard revient à CLOSED
+
+L'application dispose ainsi de deux niveaux de diagnostic :
+- **Couche 2** (`onStateChange`) : la connexion réseau est-elle active ?
+- **Couche 3** (guard présence) : le pair applicatif est-il réactif ?
+
+#### Sessions — machines parallèles
+
+Chaque session possède sa propre SM, avec le **même vocabulaire** que P2PSync :
+
+```
+IDLE ──→ CONNECTING ──→ CONNECTED ──→ DISCONNECTED
+```
+
+**Contrainte** : une session ne peut être CONNECTED que si P2PSync est lui-même CONNECTED. Si P2PSync passe à DISCONNECTED → toutes les sessions passent simultanément à DISCONNECTED.
+
+#### Vue d'ensemble
+
+```
+P2PSync :           IDLE → CONNECTING → CONNECTED → DISCONNECTED
+                                             │
+guard présence :              [HALF_OPEN → CLOSED ↔ OPEN]
+                                             │
+sessions (× N) :        IDLE → CONNECTING → CONNECTED → DISCONNECTED
+(parallèles)            (contrainte : P2PSync CONNECTED)
+```
+
+Trois niveaux de SM, un seul vocabulaire.
 
 ### Interface transport
 
@@ -681,14 +773,14 @@ P2PSync inclut une session interne de **présence**, active par défaut dès la 
 
 ```
 P2PSync
-   ├── _presence    peer (fps 0.5)   ← interne, automatique
-   ├── "chat"       peer (fps 0)     ← applicatif
-   └── "game"       host (fps 30)    ← applicatif
+   ├── _presence    indépendant (fps 0.5)   ← interne, automatique
+   ├── "chat"       indépendant (fps 0)     ← applicatif
+   └── "game"       centralisé  (fps 30)    ← applicatif
 ```
 
 #### Fonctionnement
 
-La session `_presence` est une session peer à très basse fréquence (0.5 fps par défaut — un échange toutes les 2 secondes). Elle envoie un `peerState` minimal auquel l'application peut attacher des données optionnelles (statut de frappe, état en ligne/absent, etc.).
+La session `_presence` est une session indépendante à très basse fréquence (0.5 fps par défaut — un échange toutes les 2 secondes). Elle envoie un `localState` minimal auquel l'application peut attacher des données optionnelles (statut de frappe, état en ligne/absent, etc.).
 
 ```js
 // Fournir des données de présence (optionnel)
@@ -702,7 +794,7 @@ sync.onPresence = (presence) => {
 
 #### Suspension automatique
 
-Quand au moins une session applicative a un fps **supérieur à celui de `_presence`** (0.5 par défaut), la session `_presence` est **suspendue** — son heartbeat est redondant puisque les `peerState` de la session continue arrivent plus fréquemment. Dès que cette condition n'est plus remplie, `_presence` reprend automatiquement.
+Quand au moins une session applicative a un fps **supérieur à celui de `_presence`** (0.5 par défaut), la session `_presence` est **suspendue** — son heartbeat est redondant puisque les `localState` de la session continue arrivent plus fréquemment. Dès que cette condition n'est plus remplie, `_presence` reprend automatiquement.
 
 | Sessions actives | `_presence` |
 |-----------------|-------------|
@@ -713,7 +805,7 @@ Quand au moins une session applicative a un fps **supérieur à celui de `_prese
 
 #### Détection d'absence
 
-P2PSync surveille la réception de données (tous flux confondus : `_presence`, sessions continues, messages discrets). Si aucune donnée n'est reçue pendant un délai configurable, P2PSync déclenche un événement d'absence :
+P2PSync surveille la réception de données (tous flux confondus : `_presence`, sessions continues, messages discrets) via le guard de présence. Si aucune donnée n'est reçue pendant un délai configurable, le guard passe à OPEN et P2PSync déclenche un événement d'absence :
 
 ```js
 sync.onPresenceLost = () => {
@@ -721,33 +813,7 @@ sync.onPresenceLost = () => {
 };
 ```
 
-#### Impact sur la machine à états de P2PSync
-
-La présence intégrée ajoute une dimension d'état au niveau de P2PSync. En plus de la SM de connexion (remontée de la couche 2), P2PSync maintient un **état de présence du pair** :
-
-```
-                    données reçues
-                         │
-UNKNOWN ──────────→ PRESENT ←──────────── (toute réception)
-  ↑                    │
-  │                    │  aucune donnée depuis N secondes
-  │                    ▼
-  │               ABSENT
-  │                    │
-  └────────────────────┘  données reçues à nouveau
-```
-
-| État | Signification | Transition vers |
-|------|---------------|-----------------|
-| **UNKNOWN** | Connexion établie, pas encore de données reçues | PRESENT (première réception) |
-| **PRESENT** | Le pair envoie activement des données | ABSENT (timeout sans réception) |
-| **ABSENT** | Aucune donnée reçue depuis le seuil configuré | PRESENT (réception reprend) |
-
-Cet état est indépendant de la SM de connexion de la couche 2 : le pair peut être **connecté** (couche 2) mais **absent** (couche 3) — par exemple si l'onglet est en arrière-plan ou si l'application a gelé.
-
-L'application dispose ainsi de deux niveaux de diagnostic :
-- **Couche 2** (`onStateChange`) : la connexion réseau est-elle active ?
-- **Couche 3** (`onPresenceLost`) : le pair applicatif est-il réactif ?
+La SM du guard de présence (HALF_OPEN / CLOSED / OPEN) et son intégration dans la SM de P2PSync sont décrites dans la section **Machine à états de P2PSync**.
 
 ---
 
@@ -758,7 +824,7 @@ L'application dispose ainsi de deux niveaux de diagnostic :
 | 0 | WebRTC (navigateur) | Connexion P2P directe, chiffrement DTLS | — |
 | 1 | PeerJS | Simplification WebRTC : signalisation, identité, sérialisation | WebRTC |
 | 2 | NetworkManager | Transport sécurisé : SM, auth, ping, CB, validation | PeerJS |
-| 3 | P2PSync | Façade applicative : sessions multiplexées, discret/continu × dirigé/peer | aucune (transport-agnostique) |
+| 3 | P2PSync | Façade applicative : sessions multiplexées, mode (centralisé/indépendant) × fps | aucune (transport-agnostique) |
 
 Chaque couche ajoute des garanties sans exposer les détails de la couche inférieure. L'application ne voit que la couche 3 — P2PSync est son unique point d'entrée.
 
@@ -769,14 +835,18 @@ Chaque couche ajoute des garanties sans exposer les détails de la couche infér
 | Terme | Définition |
 |-------|-----------|
 | **CB** | Circuit Breaker — patron de résilience qui bloque temporairement les appels vers un pair défaillant après N échecs consécutifs |
+| **Centralisé** | Mode de session où l'hôte détient l'état de vérité. Le guest envoie des actions, l'hôte répond avec le fullState autoritaire |
+| **Collaboratif** | Mode de session réservé (hors scope) où les deux pairs modifient la même donnée, nécessitant un mécanisme de convergence (CRDT, OT) |
 | **DTLS** | Datagram Transport Layer Security — protocole de chiffrement pour les transports datagramme (UDP). WebRTC l'impose sur tout `RTCDataChannel` : les données sont chiffrées de bout en bout |
-| **Handler** | Objet duck-typed fourni par l'application pour chaque session. P2PSync appelle ses méthodes (`getLocalState`, `onMessage`, etc.) selon le type de session |
+| **Guard** | SM interne qui surveille une condition en continu. Le circuit breaker (couche 2) est un guard sur les tentatives de connexion (CLOSED/OPEN/HALF_OPEN). Le guard de présence (couche 3) est un guard sur l'activité du pair en état CONNECTED (même formalisme) |
+| **Handler** | Objet duck-typed fourni par l'application pour chaque session. P2PSync appelle ses méthodes (`getLocalState`, `onMessage`, etc.) selon le mode et le fps de la session |
 | **ICE** | Interactive Connectivity Establishment — protocole qui teste plusieurs chemins réseau (direct, STUN, TURN) et sélectionne le meilleur pour établir la connexion P2P |
+| **Indépendant** | Mode de session où chaque pair a son propre état, partagé en lecture seule. Pas de conflit possible |
 | **NAT** | Network Address Translation — mécanisme réseau qui partage une IP publique entre plusieurs appareils d'un réseau local. Obstacle principal à la connexion P2P directe |
 | **P2P** | Peer-to-Peer — communication directe entre deux pairs, sans serveur intermédiaire pour les données |
 | **RTT** | Round Trip Time — temps d'aller-retour d'un message entre deux pairs |
 | **SDP** | Session Description Protocol — format texte décrivant les capacités média/données d'un pair (codecs, protocoles, paramètres réseau). Échangé lors de la négociation WebRTC |
-| **Session** | Canal logique multiplexé sur un transport unique, défini par son autorité (host/peer) et son fps (0 = discret, > 0 = + boucle continue). Identifié par un nom unique, géré par un handler applicatif |
+| **Session** | Canal logique multiplexé sur un transport unique, défini par son mode (centralisé/indépendant/collaboratif) et son fps. Identifié par un nom unique, géré par un handler applicatif |
 | **SHA-256** | Algorithme de hachage cryptographique utilisé par pacpam pour l'authentification mutuelle des pairs |
 | **SM** | State Machine — machine à états finis qui gouverne le cycle de vie d'une connexion dans `NetworkManager` |
 | **STUN** | Session Traversal Utilities for NAT — serveur léger qui permet à un pair de découvrir son IP publique et son port, nécessaire pour traverser un NAT |

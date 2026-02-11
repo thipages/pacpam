@@ -5,6 +5,15 @@
 - [x] Erreurs réseau distinctes : PEER_CREATION_ERROR, SIGNALING_ERROR, CONNECTION_ERROR (25 → 30 transitions)
 - [x] IDs préfixés dans les définitions de states (`c1`–`c30`, `cb1`–`cb10`)
 - [x] Changelog (`docs/changelog.md`)
+- [x] Architecture P2PSync documentée (`docs/architecture.md`) :
+  - SM P2PSync : IDLE / CONNECTING / CONNECTED / DISCONNECTED (projection groupée de la SM couche 2)
+  - Guard présence sur CONNECTED : HALF_OPEN / CLOSED / OPEN (même formalisme que le circuit breaker)
+  - Sessions = machines parallèles, même vocabulaire que P2PSync
+  - Modes de données par session : centralisé / indépendant / collaboratif (réservé)
+  - Deux niveaux d'autorité : administratif (hôte, toujours centralisé) + données (configurable par session)
+  - 4 types de messages normalisés : `action`, `fullState`, `localState`, `message`
+  - Présence intégrée (`_presence`), suspension automatique si session fps > 0.5
+  - Interface transport agnostique + verrouillage du transport
 
 ---
 
@@ -12,10 +21,10 @@
 
 `fps` est fixé au constructeur et immuable. Les briques `startSync()` / `stopSync()` existent mais pas de méthode pour changer le fps à chaud.
 
-Nécessaire pour les transitions entre modes :
+Nécessaire pour les transitions dynamiques sur une session :
 
 ```
-Chat (fps=0, pas de session) → Tour par tour (fps=0, session) → Temps réel (fps>0, session)
+session "game" centralisé fps=0 (tour par tour) → setFps(30) → temps réel → setFps(0) → retour tour par tour
 ```
 
 - `setFps(0)` : arrête la boucle (`stopSync()`)
@@ -36,47 +45,49 @@ sendAction(action) {
 
 Le `fullState` autoritaire corrige toute divergence au prochain cycle (≤ 33ms à 30fps).
 
-## 3. P2PSync — session (interface duck-typed)
+## 3. P2PSync — handler (contrat duck-typed)
 
-Méthodes attendues par `P2PSync.setup()` :
+Le handler est un objet fourni par l'application pour chaque session. Contrat cible (voir `docs/architecture.md`) :
 
-| Méthode | Requis | Appelé par |
-|---------|--------|------------|
-| `getLocalState()` | oui | boucle sync, `broadcastState()` |
-| `applyRemoteState(state)` | oui | `receiveMessage()` (fullState/peerState) |
-| `processAction(action)` | optionnel | `receiveMessage()` (hôte), `sendAction()` (prédiction guest) |
-| `isRunning` | oui | boucle sync (guard) |
-| `isNetworkGame` | set par setup() | — |
-| `isHost` | set par setup() | — |
+| Méthode | Optionnel | Appelé par |
+|---------|-----------|------------|
+| `getLocalState()` | oui | boucle fps, `broadcastState()` |
+| `applyRemoteState(state)` | oui | réception `fullState` ou `localState` |
+| `processAction(action)` | oui | réception `action` (hôte), prédiction locale (guest) |
+| `onMessage(message)` | oui | réception `message` (sessions indépendantes) |
+| `onStart()` | oui | session passe en CONNECTED |
+| `onEnd()` | oui | session passe en DISCONNECTED |
+| `onPeerAbsent()` | oui | guard présence passe à OPEN |
+| `onPeerBack()` | oui | guard présence revient à CLOSED |
 
-## 4. Architecture — modes de communication dans la lib
+Toutes les méthodes sont optionnelles — seules celles pertinentes pour le mode/fps de la session sont appelées.
 
-La lib est générique (pas spécifique au jeu). Les trois modes sont des patterns de communication P2P :
+## 4. Architecture — modes de communication *(décidé)*
 
-| Mode | fps | Session | Pattern |
-|------|-----|---------|---------|
-| **Discret sans session** | 0 | Non | `send()` direct (chat, notifications) |
-| **Discret avec session** | 0 | Oui | `sendAction()` / `broadcastState()` à la demande (tour par tour) |
-| **Continu** | > 0 | Oui | Boucle périodique automatique (temps réel) |
+**Décision** : P2PSync est la façade unique. Toute communication passe par des sessions. Le transport est verrouillé — plus d'accès direct à `NetworkManager.send()`.
 
-Aujourd'hui `P2PSync` gère les modes 2 et 3. Le mode 1 passe directement par `NetworkManager.send()`.
+Deux dimensions par session (voir `docs/architecture.md`) :
 
-Question ouverte : comment structurer ces modes dans la lib ? Options :
-1. **Statu quo** — `NetworkManager` (mode 1) + `P2PSync` (modes 2-3), l'app choisit
-2. **Plugin/middleware** — `NetworkManager` accepte des plugins qui interceptent `onData`/`send`
-3. **Modes intégrés** — `NetworkManager` expose `setMode('direct' | 'session')` et gère P2PSync en interne
+| | fps = 0 (discret) | fps > 0 (discret + continu) |
+|---|---|---|
+| **centralisé** | Jeu tour par tour, quiz | Jeu temps réel |
+| **indépendant** | Chat, notifications | Curseurs, présence |
+| **collaboratif** | *(réservé — CRDT/OT)* | *(réservé)* |
 
-## 5. Nettoyage — vocabulaire "game" dans la lib
+## 5. Nettoyage — vocabulaire
 
-Le coeur de la lib ne doit pas parler de jeu. Occurrences actuelles :
+Le cœur de la lib ne doit pas parler de jeu. Changements prévus :
 
-| Symbole | Fichier | Remplacement proposé |
-|---------|---------|---------------------|
-| `sanitizeGameState(state)` | `message-validator.js`, `network.js`, `index.js` | `sanitizeState(state)` |
-| `session.isNetworkGame` | `p2p-sync.js` | `session.isNetworkSession` |
-| `"Sanitise un objet état de jeu"` | `message-validator.js` (JSDoc) | `"Sanitise un objet état"` |
+| Ancien | Nouveau | Fichiers | Breaking |
+|--------|---------|----------|----------|
+| `sanitizeGameState(state)` | `sanitizeState(state)` | `message-validator.js`, `network.js`, `index.js` | Oui (export public) |
+| `session.isNetworkGame` | *(supprimé — géré par P2PSync)* | `p2p-sync.js` | Oui |
+| `peerState` (type message) | `localState` | `p2p-sync.js` | Oui |
+| `"Sanitise un objet état de jeu"` | `"Sanitise un objet état"` | `message-validator.js` (JSDoc) | Non |
+| INACTIVE/PENDING/ACTIVE/ENDED | IDLE/CONNECTING/CONNECTED/DISCONNECTED | nouveau code sessions | Non (nouveau) |
+| UNKNOWN/PRESENT/ABSENT | HALF_OPEN/CLOSED/OPEN | nouveau code présence | Non (nouveau) |
 
-API publique cassante (`sanitizeGameState` est exporté) → prévoir un alias ou documenter le breaking change.
+API publique cassante → documenter dans le breaking change v0.10.0.
 
 ## 6. Nettoyage — `locales/` hors `src/`
 
