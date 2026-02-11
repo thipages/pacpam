@@ -37,7 +37,7 @@ const PROTOCOL_SCHEMAS = {
       state: { type: 'object', maxDepth: 5 }
     }
   },
-  peerState: {
+  localState: {
     required: ['state'],
     fields: {
       state: { type: 'object', maxDepth: 5 }
@@ -47,6 +47,21 @@ const PROTOCOL_SCHEMAS = {
     required: ['action'],
     fields: {
       action: { type: 'object', nullable: true, maxDepth: 3 }
+    }
+  },
+  message: {
+    required: ['payload'],
+    fields: {
+      payload: { type: 'object', maxDepth: 5 }
+    }
+  },
+  _ctrl: {
+    required: ['_ctrl'],
+    fields: {
+      _ctrl: { type: 'string', maxLength: 50 },
+      id: { type: 'string', maxLength: 50 },
+      mode: { type: 'string', maxLength: 20 },
+      fps: { type: 'number', min: 0 }
     }
   }
 };
@@ -189,7 +204,8 @@ export function validateMessage(data) {
     }
 
     // Vérifier qu'il n'y a pas de champs supplémentaires non autorisés
-    const allowedFields = ['type', ...(schema.required || []), ...Object.keys(schema.fields || {})];
+    // _s (session id) et _ctrl sont des champs de routage acceptés sur tous les messages
+    const allowedFields = ['type', '_s', '_ctrl', ...(schema.required || []), ...Object.keys(schema.fields || {})];
     for (const field in data) {
       if (!allowedFields.includes(field)) {
         console.warn(`[Security] Champ non autorisé: ${field}`);
@@ -206,9 +222,9 @@ export function validateMessage(data) {
 }
 
 /**
- * Sanitise un objet état de jeu
+ * Sanitise un objet état
  */
-export function sanitizeGameState(state) {
+export function sanitizeState(state) {
   if (!state || typeof state !== 'object') return {};
 
   // Clone pour éviter les mutations

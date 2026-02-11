@@ -4,9 +4,11 @@
 
 // Configuration des limites par type de message
 export const MESSAGE_RATE_LIMITS = {
-  'peerState': { max: 35, window: 1000 },    // 35/sec pour 30fps + marge
+  'localState': { max: 35, window: 1000 },    // 35/sec pour 30fps + marge
   'fullState': { max: 35, window: 1000 },    // Idem
   'action': { max: 10, window: 1000 },       // Actions on-demand
+  'message': { max: 20, window: 1000 },      // Messages discrets
+  '_ctrl': { max: 20, window: 1000 },        // Messages de contrôle session
   'auth': { max: 5, window: 10000 },         // Authentification
   'ping': { max: 2, window: 3000 },          // 2 pings toutes les 3 sec
   'pong': { max: 2, window: 3000 },

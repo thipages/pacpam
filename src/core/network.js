@@ -5,7 +5,7 @@
  */
 
 import { Peer } from 'peerjs';
-import { validateMessage, sanitizeString, sanitizeGameState } from '../security/message-validator.js';
+import { validateMessage, sanitizeString, sanitizeState } from '../security/message-validator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
 import { P2PCircuitBreaker } from '../security/circuit-breaker.js';
 import { StateRunner } from './state-runner.js';
@@ -330,7 +330,7 @@ export class NetworkManager {
       }
 
       if (data.state && typeof data.state === 'object') {
-        data.state = sanitizeGameState(data.state);
+        data.state = sanitizeState(data.state);
       }
 
       if (data.type === 'ping') {
