@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateMessage, sanitizeString, sanitizeGameState } from '../src/security/message-validator.js';
+import { validateMessage, sanitizeString, sanitizeState } from '../src/security/message-validator.js';
 
 describe('Validation des messages', () => {
   it('rejet de message sans type', () => {
@@ -27,21 +27,99 @@ describe('Validation des messages', () => {
     assert.equal(validateMessage({ type: 'ping', timestamp: Date.now(), maliciousField: 'hack' }), false);
   });
 
-  it('validation peerState avec état valide', () => {
+  it('validation localState avec état valide', () => {
     assert.equal(validateMessage({
-      type: 'peerState',
+      type: 'localState',
       state: { players: [], score: { p1: 0, p2: 0 } }
     }), true);
   });
 
-  it('rejet peerState avec objet trop profond', () => {
+  it('rejet localState avec objet trop profond', () => {
     let deepObj = {};
     let current = deepObj;
     for (let i = 0; i < 15; i++) {
       current.nested = {};
       current = current.nested;
     }
-    assert.equal(validateMessage({ type: 'peerState', state: deepObj }), false);
+    assert.equal(validateMessage({ type: 'localState', state: deepObj }), false);
+  });
+});
+
+describe('Validation _ctrl', () => {
+  it('validation sessionCreate valide', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionCreate', id: 'counter', mode: 'centralized', fps: 0
+    }), true);
+  });
+
+  it('rejet sessionCreate sans mode', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionCreate', id: 'counter', fps: 0
+    }), false);
+  });
+
+  it('validation sessionReady valide', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionReady', id: 'counter'
+    }), true);
+  });
+
+  it('validation sessionSetFps valide', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionSetFps', id: 'counter', fps: 5
+    }), true);
+  });
+
+  it('rejet sessionSetFps sans fps', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionSetFps', id: 'counter'
+    }), false);
+  });
+
+  it('validation sessionEnd valide', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'sessionEnd', id: 'counter'
+    }), true);
+  });
+
+  it('rejet _ctrl avec sous-type inconnu', () => {
+    assert.equal(validateMessage({
+      type: '_ctrl', _ctrl: 'unknownCommand', id: 'x'
+    }), false);
+  });
+
+  it('rejet _ctrl sans sous-type', () => {
+    assert.equal(validateMessage({ type: '_ctrl' }), false);
+  });
+});
+
+describe('Validation _s et message', () => {
+  it('validation message avec payload', () => {
+    assert.equal(validateMessage({
+      type: 'message', _s: 'status', payload: { text: 'hello', from: 'ALICE' }
+    }), true);
+  });
+
+  it('rejet message sans payload', () => {
+    assert.equal(validateMessage({ type: 'message', _s: 'status' }), false);
+  });
+
+  it('validation fullState avec _s', () => {
+    assert.equal(validateMessage({
+      type: 'fullState', _s: 'counter', state: { count: 42 }
+    }), true);
+  });
+
+  it('rejet _s trop long', () => {
+    assert.equal(validateMessage({
+      type: 'fullState', _s: 'x'.repeat(51), state: { count: 0 }
+    }), false);
+  });
+
+  it('rejet _s non-string', () => {
+    assert.equal(validateMessage({
+      type: 'fullState', _s: 123, state: { count: 0 }
+    }), false);
   });
 });
 
@@ -59,8 +137,8 @@ describe('Sanitisation', () => {
     assert.equal(output.includes('\x7F'), false);
   });
 
-  it('protection XSS dans sanitizeGameState', () => {
-    const sanitized = sanitizeGameState({
+  it('protection XSS dans sanitizeState', () => {
+    const sanitized = sanitizeState({
       playerName: '<img src=x onerror=alert(1)>',
       message: '<script>steal()</script>'
     });
@@ -73,7 +151,7 @@ describe('Sanitisation', () => {
 describe('Taille de payload', () => {
   it('rejet de message trop large (>50KB)', () => {
     const hugeArray = new Array(10000).fill('A'.repeat(100));
-    assert.equal(validateMessage({ type: 'peerState', state: { data: hugeArray } }), false);
+    assert.equal(validateMessage({ type: 'localState', state: { data: hugeArray } }), false);
   });
 
   it('limitation de longueur de string à 1000 caractères', () => {

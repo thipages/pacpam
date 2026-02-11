@@ -66,6 +66,41 @@ const PROTOCOL_SCHEMAS = {
   }
 };
 
+// Validation spécifique par sous-type _ctrl
+const CTRL_SCHEMAS = {
+  sessionCreate: {
+    required: ['_ctrl', 'id', 'mode', 'fps'],
+    fields: {
+      _ctrl: { type: 'string', maxLength: 50 },
+      id: { type: 'string', maxLength: 50 },
+      mode: { type: 'string', maxLength: 20 },
+      fps: { type: 'number', min: 0 }
+    }
+  },
+  sessionReady: {
+    required: ['_ctrl', 'id'],
+    fields: {
+      _ctrl: { type: 'string', maxLength: 50 },
+      id: { type: 'string', maxLength: 50 }
+    }
+  },
+  sessionSetFps: {
+    required: ['_ctrl', 'id', 'fps'],
+    fields: {
+      _ctrl: { type: 'string', maxLength: 50 },
+      id: { type: 'string', maxLength: 50 },
+      fps: { type: 'number', min: 0 }
+    }
+  },
+  sessionEnd: {
+    required: ['_ctrl', 'id'],
+    fields: {
+      _ctrl: { type: 'string', maxLength: 50 },
+      id: { type: 'string', maxLength: 50 }
+    }
+  }
+};
+
 // Schémas applicatifs enregistrés dynamiquement
 let customSchemas = {};
 
@@ -177,10 +212,32 @@ export function validateMessage(data) {
     }
 
     // Vérifier que le type est connu
-    const schema = PROTOCOL_SCHEMAS[data.type] || customSchemas[data.type];
+    let schema = PROTOCOL_SCHEMAS[data.type] || customSchemas[data.type];
     if (!schema) {
       console.warn(`[Security] Type de message inconnu: ${data.type}`);
       return false;
+    }
+
+    // Pour les messages _ctrl, valider le sous-type spécifique
+    if (data.type === '_ctrl') {
+      if (!data._ctrl || typeof data._ctrl !== 'string') {
+        console.warn('[Security] Message _ctrl sans sous-type');
+        return false;
+      }
+      const ctrlSchema = CTRL_SCHEMAS[data._ctrl];
+      if (!ctrlSchema) {
+        console.warn(`[Security] Sous-type _ctrl inconnu: ${data._ctrl}`);
+        return false;
+      }
+      schema = ctrlSchema;
+    }
+
+    // Valider _s si présent
+    if ('_s' in data) {
+      if (typeof data._s !== 'string' || data._s.length > 50) {
+        console.warn('[Security] Champ _s invalide');
+        return false;
+      }
     }
 
     // Vérifier les champs requis

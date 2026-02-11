@@ -168,3 +168,15 @@ Boucle continue, `setFps`, `broadcastState`, prédiction guest — le tout valid
 **Suspension automatique** : quand au moins une session applicative a un `fps > 0.5`, `_presence` est suspendue (fps=0). Le guard de présence continue de fonctionner, nourri par les données des sessions actives. Quand toutes les sessions reviennent à `fps ≤ 0.5`, `_presence` reprend automatiquement.
 
 **App de test** : section « Présence » avec affichage pair distant, input de présence, indicateur suspension.
+
+---
+
+### Phase 7 — Validation et rate limiting
+
+**Validation _ctrl par sous-type** : les messages `_ctrl` sont désormais validés spécifiquement selon leur sous-type (`sessionCreate`, `sessionReady`, `sessionSetFps`, `sessionEnd`). Un sous-type inconnu est rejeté.
+
+**Validation `_s`** : le champ `_s` (identifiant de session) est validé comme string ≤ 50 caractères quand présent.
+
+**Tests unitaires** : correction des anciens noms (`peerState` → `localState`, `sanitizeGameState` → `sanitizeState`). Ajout de 13 tests couvrant `_ctrl` par sous-type, `message`, `_s`, et les rejets associés. Total : 26 tests.
+
+**App de test** : bouton « Envoyer invalide » qui envoie 3 messages malformés (type inconnu, _ctrl inconnu, champ requis manquant) — vérifier les rejets dans la console du pair distant.
