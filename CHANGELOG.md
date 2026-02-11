@@ -180,3 +180,13 @@ Boucle continue, `setFps`, `broadcastState`, prédiction guest — le tout valid
 **Tests unitaires** : correction des anciens noms (`peerState` → `localState`, `sanitizeGameState` → `sanitizeState`). Ajout de 13 tests couvrant `_ctrl` par sous-type, `message`, `_s`, et les rejets associés. Total : 26 tests.
 
 **App de test** : bouton « Envoyer invalide » qui envoie 3 messages malformés (type inconnu, _ctrl inconnu, champ requis manquant) — vérifier les rejets dans la console du pair distant.
+
+---
+
+### Phase 8 — API publique et exports
+
+Nettoyage des exports `src/index.js` : suppression des modules internes (`p2pSyncStates`, `guardStates`, `Session`, `SessionCtrl`) qui ne font pas partie de l'API publique.
+
+Exports conservés : `NetworkManager`, `PeerTransport`, `P2PSync` (+ core, security). `P2PSync` est la façade recommandée ; `NetworkManager` reste disponible pour les cas avancés.
+
+L'app de test (`peer-instance.js`) utilise exclusivement les exports publics de `index.js`.
