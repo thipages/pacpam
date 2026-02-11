@@ -164,7 +164,7 @@ export class P2PSync {
     }
   }
 
-  // --- Boucle sync par session (phase 5, préparé ici) ---
+  // --- Boucle sync par session ---
 
   #startSessionSync(session) {
     if (session.fps <= 0 || session.syncInterval) return;

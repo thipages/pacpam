@@ -132,3 +132,21 @@ Deux classes : `Session` (cycle de vie + SM) et `SessionCtrl` (contrôleur expos
 **Destruction** : perte de connexion → toutes les sessions passent en DISCONNECTED, `handler.onEnd()` appelé. Côté hôte, les SM sont réinitialisées pour reconnexion.
 
 **App de test** : les boutons +1/−1 utilisent `counterCtrl.sendAction()`, les messages utilisent `statusCtrl.sendMessage()`. Section « Sessions » affiche l'état de chaque session.
+
+---
+
+### Phase 5 — Logique de sync
+
+Boucle continue, `setFps`, `broadcastState`, prédiction guest — le tout validé bout en bout.
+
+**Boucle continue** : chaque session CONNECTED avec `fps > 0` a son propre `setInterval`. Centralisé : hôte envoie `fullState`, guest envoie `localState` (inputs). Indépendant : les deux envoient `localState`.
+
+**`setFps(n)`** : hôte seul peut changer le fps à chaud. Envoie `_ctrl:sessionSetFps` au guest, les deux redémarrent leur boucle. Le guest applique le changement sans renvoyer le `_ctrl` (pas de boucle infinie).
+
+**`broadcastState()`** : envoi ponctuel de l'état (centralisé : hôte → `fullState`, indépendant : les deux → `localState`). Utile hors réception d'action (début de partie, timer, etc.).
+
+**Auto-broadcast** : après chaque `processAction` sur l'hôte, `getLocalState()` → `fullState` envoyé au guest automatiquement.
+
+**Prédiction guest** : `sendAction` appelle `handler.processAction` localement avant d'envoyer au réseau.
+
+**App de test** : boutons Broadcast et Toggle fps (hôte uniquement). Boutons +1/−1 désactivés côté hôte (centralisé). Indicateur fps dans le titre de section.
