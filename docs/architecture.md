@@ -180,6 +180,46 @@ IDLE ──→ INITIALIZING ──→ READY ──→ CONNECTING ──→ AUTHE
 
 Chaque transition a un ID stable (`c1`–`c30`), défini dans `connection-states.js`.
 
+### Numérotation globale
+
+| Plage | Machine | États sources | Canal principal |
+|-------|---------|---------------|-----------------|
+| `c1`–`c5` | Connexion | IDLE, INITIALIZING | Signalisation |
+| `c6`–`c17` | Connexion | READY, CONNECTING | Signalisation + Données |
+| `c18`–`c30` | Connexion | AUTHENTICATING, CONNECTED | Données |
+| `cb1`–`cb10` | Disjoncteur | CLOSED, OPEN, HALF_OPEN | Interne |
+| `p1`–`p6` | P2PSync | IDLE, CONNECTING, CONNECTED, DISCONNECTED | Projection couche 2 |
+| `g1`–`g4` | Guard présence | HALF_OPEN, CLOSED, OPEN | Interne |
+| `s1`–`s4` | Session | IDLE, CONNECTING, CONNECTED, DISCONNECTED | Protocole `_ctrl` |
+
+### Classification des déclencheurs
+
+| Déclencheur | Marqueur | Transitions |
+|-------------|----------|-------------|
+| **Utilisateur** | ▶ | c1, c6, c11, c17, c24, c30 |
+| **Système** | — | c2–c5, c7–c10, c12–c16, c18–c29, cb1–cb2, cb5, cb7–cb8, p1–p6, g1–g4, s1–s4 |
+| **Debug** | 🔧 | cb3–cb4, cb6, cb9–cb10 |
+
+### Liens inter-machines
+
+**Guards** (la SM cible conditionne une transition) :
+
+| # | Transition | Condition |
+|---|------------|-----------|
+| c6 | READY → CONNECTING | Bloqué si CB = OPEN |
+
+**Emits** (une transition notifie une autre SM) :
+
+| # | Transition | → SM cible | Événement |
+|---|------------|------------|-----------|
+| c1 | IDLE → INITIALIZING | P2PSync | CONNECT |
+| c12 | CONNECTING → AUTHENTICATING | CB | SUCCESS |
+| c13–c16 | CONNECTING → READY | CB | FAILURE |
+| c18 | AUTHENTICATING → CONNECTED | P2PSync | TRANSPORT_CONNECTED |
+| c25–c26, c28–c30 | CONNECTED → READY/IDLE | P2PSync | TRANSPORT_LOST |
+
+Les transitions couche 2 → IDLE émettent conditionnellement `TRANSPORT_FAILED` (si P2PSync = CONNECTING) ou `RESET` (si P2PSync = DISCONNECTED). Ces émissions conditionnelles sont gérées dans `#mapTransportState()` et annotées par `guardLabel` dans `p2p-sync-states.js`.
+
 ### Contrat exposé à la couche supérieure
 
 ```js

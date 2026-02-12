@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tests - new-chat-2</title>
+  <script type="importmap">
+    { "imports": { "peerjs": "https://esm.sh/peerjs@1.5.4" } }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      background: #111; color: #e0e0e0;
+      padding: 24px; max-width: 800px; margin: 0 auto;
+    }
+    h1 { font-size: 1.1rem; color: #888; margin-bottom: 20px; }
+
+    /* --- Scénario --- */
+    .scenario { margin-bottom: 24px; }
+    .scenario-header {
+      font-size: 0.95rem; font-weight: 600; padding: 8px 12px;
+      border-radius: 4px 4px 0 0; background: #1a1a1a; border-bottom: 1px solid #333;
+    }
+    .scenario-header.pass { color: #4caf50; }
+    .scenario-header.fail { color: #f44336; }
+    .scenario-header.running { color: #888; }
+    .scenario-header .badge {
+      display: inline-block; font-size: 0.7rem; font-weight: 400;
+      padding: 1px 6px; border-radius: 3px; margin-left: 8px; vertical-align: middle;
+    }
+    .scenario-header.pass .badge { background: #1a2e1a; border: 1px solid #4caf50; }
+    .scenario-header.fail .badge { background: #2e1a1a; border: 1px solid #f44336; }
+    .scenario-header.running .badge { background: #1a1a1a; border: 1px solid #555; }
+    .scenario-body { border: 1px solid #222; border-top: none; border-radius: 0 0 4px 4px; padding: 8px; }
+
+    /* --- Steps (repliés par défaut) --- */
+    .steps-details { margin-top: 8px; }
+    .steps-details summary {
+      font-size: 0.72rem; color: #555; cursor: pointer; padding: 4px 0; user-select: none;
+    }
+    .steps-details summary:hover { color: #888; }
+    .steps { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+    .entry { padding: 5px 10px; border-radius: 3px; font-size: 0.82rem; display: flex; gap: 8px; }
+    .entry.step { color: #888; background: #161616; }
+    .entry.pass { color: #4caf50; background: #1a2e1a; }
+    .entry.fail { color: #f44336; background: #2e1a1a; }
+    .entry.skip { color: #ff9800; background: #2e2a1a; }
+    .entry .result { margin-left: auto; font-size: 0.78rem; opacity: 0.85; white-space: nowrap; }
+
+    /* --- Peer diagram --- */
+    .peer-diagram { margin-top: 4px; }
+    .peer-row {
+      display: flex; gap: 12px; padding: 4px 10px; font-size: 0.78rem;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .peer-row-name { color: #4caf50; min-width: 180px; }
+    .peer-row-ids { color: #888; }
+    .peer-total {
+      padding: 6px 10px; font-size: 0.78rem; font-weight: 600; color: #4caf50;
+      border-top: 1px solid #333; margin-top: 2px;
+    }
+
+    /* --- Timeline SM --- */
+    .sm-timeline {
+      display: flex; flex-direction: column; align-items: center;
+      margin-top: 4px; padding: 4px 0;
+    }
+    .sm-node {
+      border: 1px solid #333; border-radius: 6px; background: #1a1a1a;
+      padding: 6px 16px; min-width: 280px; text-align: center;
+    }
+    .sm-node-name {
+      font-weight: 600; font-size: 0.85rem; color: #4b8df8; margin-bottom: 2px;
+    }
+    .sm-dev { font-size: 0.7rem; padding: 1px 0; }
+    .sm-dev.peerjs { color: #4caf50; }
+    .sm-dev.peerjs::before { content: '\2713 '; font-size: 0.6rem; }
+    .sm-dev.sm-only { color: #ff9800; }
+    .sm-dev.sm-only::before { content: '\25CB '; font-size: 0.6rem; }
+    .sm-dev.untestable { color: #f44336; }
+    .sm-dev.untestable::before { content: '\2717 '; font-size: 0.6rem; }
+    .sm-arrow {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 0; line-height: 1.1;
+    }
+    .sm-arrow-line { font-size: 0.8rem; }
+    .sm-arrow-line.peerjs { color: #4caf50; }
+    .sm-arrow-line.sm-only { color: #ff9800; }
+    .sm-arrow-line.untestable { color: #f44336; }
+    .sm-arrow-label {
+      font-size: 0.72rem; font-weight: 600;
+      background: #111; padding: 0 6px;
+    }
+    .sm-arrow-label.peerjs { color: #4caf50; }
+    .sm-arrow-label.sm-only { color: #ff9800; }
+    .sm-arrow-label.untestable { color: #f44336; }
+    .sm-legend {
+      display: flex; gap: 16px; justify-content: center;
+      font-size: 0.72rem; margin-bottom: 8px;
+    }
+    .sm-legend-item.peerjs { color: #4caf50; }
+    .sm-legend-item.sm-only { color: #ff9800; }
+    .sm-legend-item.untestable { color: #f44336; }
+
+    /* --- Sablier --- */
+    #waiting {
+      padding: 10px 12px; margin-bottom: 16px;
+      font-size: 0.88rem; color: #888;
+      border: 1px solid #222; border-radius: 6px; background: #161616;
+    }
+    #waiting .label { color: #e0e0e0; margin-left: 6px; }
+
+    /* --- Résumé global --- */
+    #global-summary {
+      margin-top: 8px; padding: 12px;
+      border-radius: 6px; font-size: 0.95rem; font-weight: 600;
+    }
+    #global-summary.pass { color: #4caf50; background: #1a2e1a; border: 1px solid #4caf50; }
+    #global-summary.fail { color: #f44336; background: #2e1a1a; border: 1px solid #f44336; }
+  </style>
+</head>
+<body>
+  <h1>Tests new-chat-2</h1>
+  <div id="waiting">\u23F3<span class="label">Initialisation...</span></div>
+  <div id="scenarios"></div>
+  <div id="global-summary"></div>
+
+  <script type="module">
+    import { loadLocale } from '../../../src/core/locale.js';
+    import { registerMessageSchemas } from '../../../src/security/message-validator.js';
+    import { TestDriver } from './test-driver.js';
+
+    // --- Registre des scénarios ---
+    import peerjsCoverage from './peerjs-coverage.js';
+    import smCoverage from './sm-coverage.js';
+    import cbCoverage from './cb-coverage.js';
+    const scenarios = [peerjsCoverage, smCoverage, cbCoverage];
+
+    // Bootstrap
+    registerMessageSchemas({
+      chat: {
+        required: ['text'],
+        fields: {
+          text: { type: 'string', maxLength: 500 },
+          from: { type: 'string', maxLength: 10 }
+        }
+      }
+    });
+    await loadLocale();
+
+    const scenariosEl = document.getElementById('scenarios');
+    const globalSummaryEl = document.getElementById('global-summary');
+    const waitingEl = document.getElementById('waiting');
+    const waitingLabel = waitingEl.querySelector('.label');
+
+    function setWaiting(text) {
+      waitingLabel.textContent = text;
+    }
+
+    function createLogger(scenarioName, stepsEl) {
+      let currentStep = null;
+      return function log(type, message) {
+        if (type === 'step') {
+          setWaiting(`${scenarioName} \u203A ${message}`);
+          const el = document.createElement('div');
+          el.className = 'entry step';
+          el.innerHTML = `<span>\u25B6 ${message}</span>`;
+          stepsEl.appendChild(el);
+          currentStep = el;
+        } else if (currentStep && (type === 'pass' || type === 'fail' || type === 'skip')) {
+          currentStep.className = `entry ${type}`;
+          const prefix = { pass: '\u2713', fail: '\u2717', skip: '\u25CB' }[type];
+          currentStep.querySelector('span').textContent =
+            `${prefix} ${currentStep.querySelector('span').textContent.slice(2)}`;
+          const detail = document.createElement('span');
+          detail.className = 'result';
+          detail.textContent = message;
+          currentStep.appendChild(detail);
+          currentStep = null;
+        } else {
+          const el = document.createElement('div');
+          el.className = `entry ${type}`;
+          const prefix = { pass: '\u2713', fail: '\u2717', skip: '\u25CB' }[type] || '';
+          el.innerHTML = `<span>${prefix} ${message}</span>`;
+          stepsEl.appendChild(el);
+        }
+      };
+    }
+
+    // --- Runner ---
+    let passed = 0;
+    let failed = 0;
+
+    for (const scenario of scenarios) {
+      const section = document.createElement('div');
+      section.className = 'scenario';
+
+      const header = document.createElement('div');
+      header.className = 'scenario-header running';
+      header.innerHTML = `${scenario.name} <span class="badge">...</span>`;
+      section.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'scenario-body';
+      section.appendChild(body);
+
+      // Steps dans un details replié
+      const stepsDetails = document.createElement('details');
+      stepsDetails.className = 'steps-details';
+      const stepsSummary = document.createElement('summary');
+      stepsSummary.textContent = 'D\u00e9tails';
+      stepsDetails.appendChild(stepsSummary);
+      const stepsEl = document.createElement('div');
+      stepsEl.className = 'steps';
+      stepsDetails.appendChild(stepsEl);
+
+      scenariosEl.appendChild(section);
+
+      const driver = new TestDriver('test-chat', 'secret123');
+      const log = createLogger(scenario.name, stepsEl);
+
+      try {
+        await scenario.run(driver, log);
+        header.className = 'scenario-header pass';
+        header.innerHTML = `\u2713 ${scenario.name} <span class="badge">PASS</span>`;
+        passed++;
+      } catch (err) {
+        log('fail', err.message);
+        stepsDetails.open = true;
+        header.className = 'scenario-header fail';
+        header.innerHTML = `\u2717 ${scenario.name} <span class="badge">FAIL</span>`;
+        failed++;
+      } finally {
+        // Diagramme en premier, détails en dessous
+        scenario.render?.(body);
+        body.appendChild(stepsDetails);
+        driver.cleanup();
+      }
+    }
+
+    // Masquer le sablier
+    waitingEl.remove();
+
+    // Résumé global
+    const total = passed + failed;
+    if (failed === 0) {
+      globalSummaryEl.className = 'pass';
+      globalSummaryEl.textContent = `${passed}/${total} PASS`;
+    } else {
+      globalSummaryEl.className = 'fail';
+      globalSummaryEl.textContent = `${passed}/${total} PASS \u2014 ${failed} FAIL`;
+    }
+  </script>
+</body>
+</html>
