@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tests - new-chat-2</title>
+  <title>Tests Machine à états</title>
   <script type="importmap">
     { "imports": { "peerjs": "https://esm.sh/peerjs@1.5.4" } }
   </script>
@@ -121,7 +121,7 @@
   </style>
 </head>
 <body>
-  <h1>Tests new-chat-2</h1>
+  <h1>Tests Machine à états</h1>
   <div id="waiting">\u23F3<span class="label">Initialisation...</span></div>
   <div id="scenarios"></div>
   <div id="global-summary"></div>
@@ -135,7 +135,10 @@
     import peerjsCoverage from './peerjs-coverage.js';
     import smCoverage from './sm-coverage.js';
     import cbCoverage from './cb-coverage.js';
-    const scenarios = [peerjsCoverage, smCoverage, cbCoverage];
+    import p2pCoverage from './p2p-coverage.js';
+    import guardCoverage from './guard-coverage.js';
+    import sessionCoverage from './session-coverage.js';
+    const scenarios = [peerjsCoverage, smCoverage, cbCoverage, p2pCoverage, guardCoverage, sessionCoverage];
 
     // Bootstrap
     registerMessageSchemas({
