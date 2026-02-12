@@ -34,6 +34,28 @@
 - [x] Page de test `pages/v0.10.0/` : app minimaliste (compteur centralisé + messages indépendants)
 - [x] Tests navigateur SM couche 3 (`docs/state-machine/tests/`) : couverture P2PSync, Guard et Session (14 transitions)
 
+---
+
+## À faire
+
+Chaque point sera évalué et décidé individuellement avant implémentation.
+
+### Manques couche 3 (audit)
+
+- [ ] **Détail transition couche 2** : `onStateChange` de P2PSync ne remonte pas le `tid` de la transition couche 2. L'application ne peut pas distinguer c25 (pair parti) de c26 (ping timeout), c28 (signaling error), c29 (connection error) ou c30 (utilisateur). Ajouter `transition` dans l'objet `detail`
+- [ ] **Guard → handlers** : `onPeerAbsent()` / `onPeerBack()` ne sont jamais appelés sur les handlers de session — seuls les callbacks globaux `sync.onPeerAbsent` / `sync.onPeerBack` fonctionnent. Propager les notifications du guard à chaque handler de session actif
+- [ ] **Signaling lost (c27)** : le self-loop c27 n'est pas remonté à P2PSync ni à l'application. Impossible d'afficher un indicateur "signalisation perdue" comme recommandé par le guide UX. Exposer un événement ou callback dédié
+- [ ] **Circuit breaker → transport** : exposer l'état du CB dans le contrat transport (callback `onCircuitBreakerChange(state, nextAttemptTime)` sur `PeerTransport`) pour distinguer "connexion en cours" de "bloqué par le disjoncteur"
+- [ ] **Reconnexion automatique (p5)** : la transition p5 (DISCONNECTED → CONNECTING) est définie mais jamais déclenchée. Ajouter une stratégie de retry (backoff, nombre max de tentatives) dans P2PSync, tenant compte de l'état du circuit breaker
+- [ ] **onPing** : le RTT n'est pas exposé par P2PSync, uniquement via `transport.onPing`. Ajouter un proxy `sync.onPing` pour cohérence avec l'API façade
+- [ ] **Exceptions handlers** : aucun try-catch autour des appels aux méthodes des handlers. Une exception dans `getLocalState()` ou `onMessage()` crash la boucle sync. Envelopper les appels dans des try-catch
+
+### Application
+
+- [ ] `pages/chat-ux/` : chat minimaliste orienté UX (voir `docs/project/chat-ux.md`)
+
+---
+
 ### Décisions prises
 
 - **`locales/` hors `src/`** : OK tel quel (données ≠ code)
