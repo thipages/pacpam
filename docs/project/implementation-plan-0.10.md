@@ -4,7 +4,7 @@ Ce plan transforme le `P2PSync` actuel (130 lignes, sync monolithique) en la fa�
 
 L'app de test `pages/v0.10.0/` évolue à chaque phase pour permettre la validation manuelle. Elle utilise deux **custom elements `<peer-instance>`** côte à côte dans la même page — pas besoin d'ouvrir deux onglets.
 
-Référence : `docs/architecture.md` (spécification complète), `docs/roadmap-0.10.md` (vue d'ensemble).
+Référence : `docs/architecture.md` (spécification complète), `docs/project/roadmap-0.10.md` (vue d'ensemble).
 
 ---
 
