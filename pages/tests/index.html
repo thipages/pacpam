@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pacpam v0.10.0 — test</title>
+    <script type="importmap">
+        { "imports": { "peerjs": "https://esm.sh/peerjs@1.5.4" } }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: monospace; font-size: 14px; padding: 16px; background: #1a1a2e; color: #e0e0e0; }
+        h1 { font-size: 18px; margin-bottom: 4px; color: #7fdbca; }
+        .phase-info { font-size: 11px; color: #555; margin-bottom: 16px; }
+
+        .split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .split > peer-instance {
+            background: #16213e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>pacpam v0.10.0 — test</h1>
+    <div class="phase-info">Phase 8 — API publique v0.10.0 : exports nettoyés</div>
+
+    <div class="split">
+        <peer-instance id="peer-a" name="Pair A" pseudo="PAIR-A"></peer-instance>
+        <peer-instance id="peer-b" name="Pair B" pseudo="PAIR-B"></peer-instance>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

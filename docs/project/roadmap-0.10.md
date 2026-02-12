@@ -52,7 +52,7 @@ Chaque point sera évalué et décidé individuellement avant implémentation.
 
 ### Application
 
-- [ ] `pages/chat-ux/` : chat minimaliste orienté UX (voir `docs/project/chat-ux.md`)
+- [x] `pages/chat-ux/` : chat minimaliste orienté UX (voir `docs/project/chat-ux.md`)
 
 ---
 

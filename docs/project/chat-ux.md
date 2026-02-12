@@ -1,4 +1,4 @@
-# Plan d'implémentation — chat-ux
+# chat-ux — implémentation
 
 Chat P2P minimaliste axé UX, implémentant les recommandations de `docs/ux/ux-p2p-sync.md`.
 
@@ -19,48 +19,75 @@ Démontrer la couche 3 (P2PSync) dans un usage réel avec une UX soignée. Le ch
 ```
 pages/chat-ux/
 ├── index.html          ← page unique, CSS inline, dark theme
-├── app.js              ← orchestration P2PSync + UI
+├── app.js              ← détection mode test, instanciation 1 ou 2 <chat-instance>
+├── chat-instance.js    ← Web Component <chat-instance> : transport + P2PSync + UI
 └── chat-handler.js     ← handler de session "chat" (indépendant, fps 0)
 ```
 
-Un seul fichier HTML, deux modules JS. Pas de build, pas de dépendance externe (hors PeerJS via importmap).
+Un fichier HTML, trois modules JS. Pas de build, pas de dépendance externe (hors PeerJS via importmap).
+
+---
+
+## Architecture
+
+Le chat est encapsulé dans un **Web Component `<chat-instance>`** (sans Shadow DOM). Chaque instance possède son propre `NetworkManager` + `PeerTransport` + `P2PSync`.
+
+En mode normal, une seule instance pleine page. En mode test (`?test`), deux instances côte à côte dans une grille.
 
 ---
 
 ## Écrans et navigation
 
-Trois écrans exclusifs, pilotés par l'état P2PSync :
+Trois écrans exclusifs. La connexion est séparée en deux actions distinctes (init puis connect) pour éviter une race condition PeerJS où un pair tente de se connecter avant que l'autre soit enregistré.
 
 ```
-P2PSync IDLE            → Écran 1 : Connexion
-P2PSync CONNECTING      → Écran 1 : Connexion (formulaire désactivé, spinner)
-P2PSync CONNECTED       → Écran 2 : Chat
-P2PSync DISCONNECTED    → Écran 2 : Chat + overlay reconnexion
+Écran 1 : Login      → "Rejoindre"  → transport.init()
+Écran 2 : Lobby      → "Connecter"  → transport.connect()
+Écran 3 : Chat       → conversation active
 ```
 
-### Écran 1 — Connexion
+### Écran 1 — Login
 
 ```
 ┌──────────────────────────────────┐
-│        pacpam chat               │
+│           Connexion              │
 │                                  │
 │   Pseudo   [__________]          │
 │   Mot de passe [______]          │
 │                                  │
-│   Pair distant [______]          │
+│   [ Rejoindre ]                  │
 │                                  │
-│   [ Connecter ]                  │
-│                                  │
-│   (état : message d'erreur)      │
+│   (message d'erreur)             │
 └──────────────────────────────────┘
 ```
 
-- Le bouton "Connecter" initie à la fois l'enregistrement PeerJS ET la connexion au pair distant
-- L'utilisateur saisit les deux pseudos d'emblée (pas de séquence en deux temps)
-- Pendant CONNECTING : formulaire grisé, spinner sur le bouton, texte "Connexion..."
-- Échec p3 : message contextuel sous le formulaire (cf. ux-p2p-sync §"P2PSync → IDLE"), bouton "Réessayer" réactivé
+- Clic "Rejoindre" → `transport.init(pseudo, APP_ID)` → enregistrement PeerJS
+- Formulaire grisé + spinner pendant l'init
+- Erreur : message sous le formulaire, formulaire réactivé
 
-### Écran 2 — Chat
+### Écran 2 — Lobby
+
+```
+┌──────────────────────────────────┐
+│ Connecté au serveur    [Quitter] │
+├──────────────────────────────────┤
+│                                  │
+│   Pseudo : ALICE                 │
+│                                  │
+│   Pseudo du pair [______]        │
+│                                  │
+│   [ Connecter ]                  │
+│                                  │
+│   (message d'erreur)             │
+└──────────────────────────────────┘
+```
+
+- Affiché après `onIdReady` (le pair est enregistré sur PeerJS)
+- L'utilisateur saisit le pseudo du pair distant → clic "Connecter"
+- Bouton "Quitter" → `transport.disconnect()` → retour écran 1
+- Erreur : message sous le formulaire, champ réactivé
+
+### Écran 3 — Chat
 
 ```
 ┌──────────────────────────────────┐
@@ -71,7 +98,7 @@ P2PSync DISCONNECTED    → Écran 2 : Chat + overlay reconnexion
 │  12:04  Salut !                  │  ← msg reçu (gauche)
 │                                  │
 │         ┌─── overlay ──────┐     │
-│         │ Pair absent...   │     │  ← guard OPEN (semi-transparent)
+│         │ Pair absent      │     │  ← guard OPEN (semi-transparent)
 │         └──────────────────┘     │
 │                                  │
 ├──────────────────────────────────┤
@@ -89,112 +116,98 @@ Indicateur combinant P2PSync × Guard :
 
 | P2PSync | Guard | Point | Texte |
 |---------|-------|-------|-------|
-| CONNECTED | HALF_OPEN | jaune | "Connecté" |
-| CONNECTED | CLOSED | vert | "pair connecté" |
-| CONNECTED | OPEN | orange | "pair absent" |
+| CONNECTED | HALF_OPEN | jaune clignotant | "Connecté" |
+| CONNECTED | CLOSED | vert | pseudo du pair |
+| CONNECTED | OPEN | orange | "Pair absent" |
 
 Le bouton "Quitter" déclenche `disconnect()` (→ p4 c30, silencieux, retour écran 1).
 
 ### Zone de messages
 
 - Messages envoyés à droite (couleur A), reçus à gauche (couleur B)
-- Messages système centrés, discrets (connexion, déconnexion, erreurs)
+- Nom de l'expéditeur affiché sur les messages reçus
 - Horodatage HH:MM sur chaque message
 - Auto-scroll vers le bas
-- L'historique est conservé en cas de reconnexion (variable locale, pas dans le handler)
 
 ### Overlay reconnexion
 
 Affiché en superposition sur le chat quand P2PSync = DISCONNECTED :
 
-| Cause (detail.transition) | Contenu overlay |
-|---------------------------|-----------------|
-| c25 (CLOSE) | "Le pair a quitté" + bouton "Retour" (→ p6 RESET → écran 1) |
-| c26 (PING_TIMEOUT) | "Connexion perdue — Reconnexion..." + spinner |
-| c28 (SIGNALING_ERROR) | "Connexion perdue — Reconnexion..." + spinner |
-| c29 (CONNECTION_ERROR) | "Connexion perdue — Reconnexion..." + spinner |
+| Cause (transition couche 2) | Contenu overlay |
+|------------------------------|-----------------|
+| c25 (CLOSE) | "Le pair a quitté la conversation" + bouton "Retour" |
+| c26/c28/c29 (réseau) | "Connexion perdue" + boutons "Reconnecter" / "Abandonner" |
 
-Pour c26/c28/c29 : reconnexion automatique (p5). Bouton "Abandonner" visible (→ p6 RESET → écran 1).
+Note : la reconnexion automatique (p5) n'est pas encore implémentée dans la lib. Les boutons ramènent à l'écran 1 avec les champs pré-remplis (Reconnecter) ou vides (Abandonner).
 
 ### Overlay pair absent
 
 Affiché quand guard = OPEN (distinct de l'overlay reconnexion) :
 
 - Bandeau semi-transparent au centre de la zone de messages
-- Texte : "Pair absent..."
-- Disparaît quand guard revient à CLOSED (g3 → g1)
-- La saisie reste active (les messages seront reçus au retour du pair)
+- Texte : "Pair absent"
+- Disparaît quand guard revient à CLOSED
+- La saisie reste active
 
 ### Toast
 
-Notifications temporaires (3s) pour les événements ponctuels :
+Notifications temporaires (3s) :
 
 | Événement | Toast |
 |-----------|-------|
 | p2 CONNECTED | "Connecté !" |
-| g1 CLOSED (retour après absence) | "Pair de retour" |
-| p3 TRANSPORT_FAILED | (pas de toast — message inline sur écran 1) |
+| guard retour CLOSED après OPEN | "Pair de retour" |
 
 ---
 
 ## Session unique
 
 ```js
-sync.createSession('chat', { mode: 'independent', fps: 0 }, chatHandler);
+sync.createSession('chat', { mode: 'independent', fps: 0 }, chatHandler)
 ```
 
-Une seule session "chat" (indépendante, fps 0). Le handshake s1 → s2 est transparent (< 100ms). L'UI du chat apparaît directement sur `onStart(ctrl)`.
+Une seule session "chat" (indépendante, fps 0). L'hôte crée la session dans `onConnected`. Le guest retourne un handler dans `onSessionCreate`.
 
 ### chat-handler.js
 
-```
-chatHandler {
-    onStart(ctrl)           → stocke ctrl, notifie l'app (session prête)
-    onEnd()                 → notifie l'app (session terminée)
-    onMessage(payload)      → notifie l'app (message reçu)
-    onPeerAbsent()          → notifie l'app (overlay pair absent)
-    onPeerBack()            → notifie l'app (overlay disparaît)
-    send(text, pseudo)      → ctrl.sendMessage({ text, from })
+```js
+createChatHandler(callbacks) → {
+    onStart(ctrl)       → stocke ctrl, notifie via callback
+    onEnd()             → libère ctrl, notifie via callback
+    onMessage(payload)  → notifie via callback (payload.text, payload.from)
+    send(text, from)    → ctrl.sendMessage({ text, from })
 }
 ```
 
-Le handler ne touche pas au DOM. Il communique avec `app.js` via des callbacks injectés à la construction.
+Le handler ne touche pas au DOM. Il communique via des callbacks injectés à la construction.
 
 ---
 
-## Flux P2PSync dans app.js
-
-### Connexion
+## Flux de connexion
 
 ```
-▶ Clic "Connecter"
-    │
+▶ Clic "Rejoindre" (écran 1)
     ├── transport.init(pseudo, APP_ID)
-    │   → onIdReady → transport.connect(remotePeerId)
-    │   → onAuthRequired → send auth message
-    │
-    ├── p1 → UI : spinner "Connexion..."
-    │
-    ├── p2 → CONNECTED
-    │   → écran 2 apparaît
-    │   → hôte : sync.createSession('chat', ...)
-    │   → toast "Connecté !"
-    │
-    └── p3 → IDLE (échec)
-        → message d'erreur sur écran 1
+    ├── onIdReady → écran 2 (lobby)
+    └── onError → message d'erreur, formulaire réactivé
+
+▶ Clic "Connecter" (écran 2)
+    ├── transport.connect(APP_ID-remotePseudo)
+    ├── onAuthRequired → createAuthMessage(password, pseudo) → transport.send()
+    ├── onData type auth → verifyHash → authSuccess() / authFailed()
+    ├── p2 CONNECTED → écran 3, toast "Connecté !"
+    ├── onConnected(isHost) → hôte crée la session chat
+    └── onError → message d'erreur, champ réactivé
 ```
 
 ### Déconnexion subie
 
 ```
 p4 TRANSPORT_LOST
-    │
     ├── c25 (pair a quitté)
-    │   → overlay "Le pair a quitté" + bouton retour
-    │
+    │   → overlay "Le pair a quitté" + bouton Retour
     └── c26/c28/c29 (réseau)
-        → overlay "Connexion perdue — Reconnexion..."
-        → p5 automatique → CONNECTING → p2 → sessions recréées → overlay disparaît
+        → overlay "Connexion perdue" + Reconnecter / Abandonner
 ```
 
 ### Déconnexion volontaire
@@ -202,27 +215,36 @@ p4 TRANSPORT_LOST
 ```
 ▶ Clic "Quitter"
     → transport.disconnect()
-    → p4 (c30, silencieux)
-    → retour écran 1
+    → retour écran 1 (silencieux)
 ```
 
 ---
 
-## Niveaux de dégradation (ref. ux-p2p-sync §"Niveaux de dégradation")
+## Mode test (`?test`)
+
+Deux instances `<chat-instance>` côte à côte dans une grille CSS.
+
+- Pseudos pré-remplis via attribut (`ALICE`, `BOB`)
+- Mots de passe pré-remplis (`test`)
+- Cross-wire : quand une instance émet `id-ready`, l'autre reçoit le pseudo distant via la propriété `remotePeerId`
+- **Pas d'auto-clic** : l'utilisateur clique manuellement sur chaque bouton pour observer le flux
+
+---
+
+## Niveaux de dégradation (ref. ux-p2p-sync)
 
 | Niveau | État | Feedback | Saisie |
 |--------|------|----------|--------|
 | 0 Nominal | CONNECTED + CLOSED | Point vert | Active |
-| 1 Pair absent | CONNECTED + OPEN | Point orange + bandeau "Pair absent..." | Active (messages envoyés, reçus au retour) |
+| 1 Pair absent | CONNECTED + OPEN | Point orange + bandeau "Pair absent" | Active |
 | 2 Déconnecté | DISCONNECTED | Overlay reconnexion | Désactivée |
-| 3 Abandonné | IDLE (après p6) | Écran 1 | Active (formulaire) |
+| 3 Abandonné | IDLE (après reset) | Écran 1 | Active (formulaire) |
 
 ---
 
 ## Contraintes techniques
 
-- **Couche 3 uniquement** : l'app utilise `P2PSync` et `PeerTransport`, jamais `NetworkManager` directement
-- **Web Components vanilla** : pas de Shadow DOM (sauf demande explicite)
+- **Web Component `<chat-instance>`** : sans Shadow DOM, préfixe CSS `ci-`
 - **CSS inline** dans `index.html` : dark theme, responsive mobile-first
 - **Pas de dépendance externe** : PeerJS via importmap uniquement
-- **Imports depuis `../../src/index.js`** : API publique pacpam
+- **APP_ID** : `'pacpam-chat-7f3a9c2e1d4b'`

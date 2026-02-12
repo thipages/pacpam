@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Chat P2P — Pacpam</title>
+  <script type="importmap">
+    { "imports": { "peerjs": "https://esm.sh/peerjs@1.5.4" } }
+  </script>
+  <style>
+    :root {
+      --bg: #111;
+      --surface: #1a1a1a;
+      --text: #e0e0e0;
+      --muted: #777;
+      --border: #333;
+      --accent: #4b8df8;
+      --danger: #f87171;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --orange: #fb923c;
+      --msg-me: #1e3a5f;
+      --msg-peer: #2a2a2a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* --- Layout mode test (2 colonnes) --- */
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      height: 100dvh;
+      background: var(--border);
+    }
+
+    .split chat-instance {
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* --- Chat instance --- */
+    chat-instance {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      position: relative;
+    }
+
+    .split chat-instance {
+      height: 100%;
+    }
+
+    /* --- Écrans --- */
+    .ci-screen {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .ci-screen.ci-active { display: flex; }
+
+    /* --- Écran login --- */
+    .ci-screen-login {
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .ci-login-card {
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .ci-login-card h2,
+    .ci-lobby-card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .ci-field {
+      margin-bottom: 14px;
+    }
+
+    .ci-field label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .ci-field input {
+      width: 100%;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .ci-field input:focus {
+      border-color: var(--accent);
+    }
+
+    .ci-field input:disabled {
+      opacity: 0.5;
+    }
+
+    .ci-login-error {
+      color: var(--danger);
+      font-size: 0.8rem;
+      margin-top: 10px;
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    /* --- Écran lobby --- */
+    .ci-screen-lobby {
+      overflow: hidden;
+    }
+
+    .ci-lobby-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .ci-lobby-status {
+      color: var(--success);
+      font-size: 0.8rem;
+    }
+
+    .ci-lobby-body {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .ci-lobby-card {
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .ci-lobby-pseudo {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .ci-lobby-pseudo strong {
+      color: var(--text);
+    }
+
+    /* --- Boutons --- */
+    .ci-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .ci-btn:disabled { opacity: 0.4; cursor: default; }
+    .ci-btn:active:not(:disabled) { opacity: 0.7; }
+    .ci-btn-accent { background: var(--accent); color: #fff; }
+    .ci-btn-danger { background: var(--danger); color: #fff; }
+    .ci-btn-muted { background: var(--border); color: var(--text); }
+    .ci-btn-full { width: 100%; margin-top: 6px; }
+    .ci-btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+
+    .ci-spinner {
+      position: relative;
+      min-height: 20px;
+    }
+
+    .ci-spinner::after {
+      content: '';
+      display: block;
+      width: 16px;
+      height: 16px;
+      margin: 0 auto;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: ci-spin 0.6s linear infinite;
+    }
+
+    @keyframes ci-spin { to { transform: rotate(360deg); } }
+
+    /* --- Barre de statut --- */
+    .ci-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .ci-spacer { flex: 1; }
+
+    .ci-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .ci-dot-green { background: var(--success); }
+    .ci-dot-orange { background: var(--orange); }
+    .ci-dot-yellow { background: var(--warning); animation: ci-pulse 1s infinite; }
+
+    @keyframes ci-pulse { 50% { opacity: 0.4; } }
+
+    .ci-status-text {
+      color: var(--muted);
+    }
+
+    /* --- Zone messages --- */
+    .ci-messages-zone {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ci-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* --- Messages --- */
+    .ci-msg {
+      max-width: 85%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .ci-msg-me {
+      align-self: flex-end;
+      background: var(--msg-me);
+      border-bottom-right-radius: 4px;
+    }
+
+    .ci-msg-peer {
+      align-self: flex-start;
+      background: var(--msg-peer);
+      border-bottom-left-radius: 4px;
+    }
+
+    .ci-msg-name {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .ci-msg-text {
+      display: block;
+    }
+
+    .ci-msg-time {
+      display: block;
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 2px;
+      text-align: right;
+    }
+
+    /* --- Barre de saisie --- */
+    .ci-input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .ci-input-bar input {
+      flex: 1;
+      padding: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .ci-input-bar input:focus {
+      border-color: var(--accent);
+    }
+
+    .ci-input-bar input:disabled {
+      opacity: 0.4;
+    }
+
+    .ci-btn-send {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .ci-btn-send:disabled { opacity: 0.3; cursor: default; }
+
+    /* --- Overlay pair absent --- */
+    .ci-overlay-absent {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.6);
+      color: var(--orange);
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+
+    /* --- Overlay reconnexion --- */
+    .ci-overlay-reconnect {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .ci-overlay-content {
+      text-align: center;
+      padding: 24px;
+    }
+
+    .ci-overlay-content p {
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+
+    .ci-overlay-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    /* --- Toast --- */
+    .ci-toast-zone {
+      position: absolute;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    .ci-toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .ci-toast-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* --- Utilitaire --- */
+    .ci-hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
