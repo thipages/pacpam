@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.10.1 — 2026-02-12
+
+Corrections couche 3 — manques identifiés par l'audit.
+
+- `onStateChange` enrichi : `detail` inclut `layer2Tid` et `layer2Event` pour distinguer les causes de déconnexion (c25 pair parti, c26 ping timeout, c28/c29 erreurs réseau, c30 volontaire)
+- Guard → handlers de session : `onPeerAbsent()` / `onPeerBack()` propagés aux handlers de chaque session CONNECTED via `#notifyGuardToSessions`
+- Circuit breaker exposé via `transport.circuitBreakerInfo(peerId)` + `transport.remotePeerId` (getters lecture seule, pas de modification de `network.js`)
+- Reconnexion manuelle : `sync.reconnect()` → `{ ok, reason, retryIn, peerId }` et `sync.reconnectInfo` → `{ canReconnect, reason, retryIn, peerId }`. Vérifie état P2PSync, couche 2, et circuit breaker avant de déclencher p5
+- RTT exposé par P2PSync : callback `sync.onPing(latency)` + propriété `sync.latency`
+- Try-catch sur tous les appels handler : helper `#safeCall` dans P2PSync + try-catch locaux dans SessionCtrl. Callback `sync.onHandlerError(sessionId, method, error)` pour monitoring applicatif
+
 ## v0.10.0 — 2026-02-11
 
 Couche 3 — P2PSync : façade applicative avec sessions multiplexées.

@@ -138,7 +138,7 @@ Affiché en superposition sur le chat quand P2PSync = DISCONNECTED :
 | c25 (CLOSE) | "Le pair a quitté la conversation" + bouton "Retour" |
 | c26/c28/c29 (réseau) | "Connexion perdue" + boutons "Reconnecter" / "Abandonner" |
 
-Note : la reconnexion automatique (p5) n'est pas encore implémentée dans la lib. Les boutons ramènent à l'écran 1 avec les champs pré-remplis (Reconnecter) ou vides (Abandonner).
+Le bouton "Reconnecter" appelle `sync.reconnect()` (reconnexion manuelle). Si le circuit breaker est actif, `sync.reconnectInfo` fournit le temps restant (`retryIn`) pour afficher un compte à rebours. "Abandonner" ramène à l'écran 1.
 
 ### Overlay pair absent
 

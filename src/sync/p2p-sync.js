@@ -23,6 +23,9 @@ export class P2PSync {
   #guardTimer = null;
   #guardTimeoutMs;
   #pendingSessions = [];  // sessions à (re)créer quand CONNECTED
+  #lastL2Tid = null;
+  #lastL2Event = null;
+  #lastPeerId = null;
 
   constructor(transport, options = {}) {
     this.transport = transport;
@@ -39,14 +42,18 @@ export class P2PSync {
     this.onPeerBack = null;
     this.onSessionCreate = null;  // guest : (id, config) => handler
     this.onSessionStateChange = null; // (sessionId, state) => void
+    this.onPing = null;
+    this.latency = null;
     this.presenceData = null;
     this.onPresence = null;
     this.onPresenceSuspensionChange = null;
+    this.onHandlerError = null;
 
     // Câbler la SM P2PSync
     this.sm.onTransition = (from, to, event) => {
-      this.onStateChange?.(to, { from, to, event, layer2State: transport.state });
+      this.onStateChange?.(to, { from, to, event, layer2State: transport.state, layer2Tid: this.#lastL2Tid, layer2Event: this.#lastL2Event });
       if (to === 'CONNECTED') {
+        this.#lastPeerId = transport.remotePeerId;
         this.#startGuard();
         this.#onSyncConnected();
       }
@@ -57,10 +64,10 @@ export class P2PSync {
     };
 
     // Projection couche 2 → P2PSync
-    this.#previousLayer2 = null;
     transport.onStateChange((state, tid, fromL2, eventL2) => {
+      this.#lastL2Tid = tid;
+      this.#lastL2Event = eventL2;
       this.#mapTransportState(state, fromL2);
-      this.#previousLayer2 = state;
     });
 
     // Routage des données entrantes
@@ -69,8 +76,12 @@ export class P2PSync {
       this.#routeMessage(data);
     });
 
-    // Ping/pong → guard
-    transport.addPingListener(() => this.feedGuard());
+    // Ping/pong → guard + RTT
+    transport.addPingListener((latency) => {
+      this.feedGuard();
+      this.latency = latency;
+      this.onPing?.(latency);
+    });
   }
 
   // --- Sessions ---
@@ -112,6 +123,42 @@ export class P2PSync {
     this.presenceData = data;
   }
 
+  /** Tente une reconnexion vers le dernier pair */
+  reconnect() {
+    if (!this.sm.is('DISCONNECTED'))
+      return { ok: false, reason: 'not_disconnected' };
+    if (!this.#lastPeerId)
+      return { ok: false, reason: 'no_peer' };
+    if (this.transport.state !== 'READY')
+      return { ok: false, reason: 'transport_not_ready' };
+
+    const cbInfo = this.transport.circuitBreakerInfo(this.#lastPeerId);
+    if (cbInfo?.state === 'OPEN') {
+      const retryIn = Math.max(0, cbInfo.nextAttemptTime - Date.now());
+      return { ok: false, reason: 'circuit_breaker', retryIn, peerId: this.#lastPeerId };
+    }
+
+    this.sm.send('RECONNECT');
+    this.transport.connect(this.#lastPeerId);
+    return { ok: true, peerId: this.#lastPeerId };
+  }
+
+  /** Info reconnexion pour l'UX (null si pas en DISCONNECTED) */
+  get reconnectInfo() {
+    if (!this.sm.is('DISCONNECTED')) return null;
+    if (!this.#lastPeerId)
+      return { canReconnect: false, reason: 'no_peer' };
+    if (this.transport.state !== 'READY')
+      return { canReconnect: false, reason: 'transport_not_ready' };
+
+    const cbInfo = this.transport.circuitBreakerInfo(this.#lastPeerId);
+    if (cbInfo?.state === 'OPEN') {
+      const retryIn = Math.max(0, cbInfo.nextAttemptTime - Date.now());
+      return { canReconnect: false, reason: 'circuit_breaker', retryIn, peerId: this.#lastPeerId };
+    }
+    return { canReconnect: true, peerId: this.#lastPeerId };
+  }
+
   #initiateSession(session) {
     session.sm.onTransition = (from, to) => {
       this.onSessionStateChange?.(session.id, to);
@@ -129,13 +176,13 @@ export class P2PSync {
     );
     session.ctrl = ctrl;
     session.sm.send('READY');
-    session.handler?.onStart?.(ctrl);
+    this.#safeCall(session.id, session.handler, 'onStart', ctrl);
   }
 
   #destroySession(session) {
     this.#stopSessionSync(session);
     session.sm.send('END');
-    session.handler?.onEnd?.();
+    this.#safeCall(session.id, session.handler, 'onEnd');
     this.sessions.delete(session.id);
     this.#updatePresenceSuspension();
   }
@@ -161,7 +208,7 @@ export class P2PSync {
       this.#stopSessionSync(session);
       if (session.state !== 'DISCONNECTED') {
         session.sm.send('END');
-        session.handler?.onEnd?.();
+        this.#safeCall(session.id, session.handler, 'onEnd');
       }
     }
     // Conserver les sessions pour reconnexion (hôte les recréera)
@@ -234,7 +281,8 @@ export class P2PSync {
       if (session.state !== 'CONNECTED') return;
       const handler = session.handler;
       if (!handler?.getLocalState) return;
-      const state = handler.getLocalState();
+      const state = this.#safeCall(session.id, handler, 'getLocalState');
+      if (state === undefined) return;
       if (session.mode === 'centralized' && this.isHost) {
         this.transport.send({ _s: session.id, type: 'fullState', state });
       } else {
@@ -338,23 +386,35 @@ export class P2PSync {
     switch (data.type) {
       case 'action':
         if (session.mode === 'centralized' && this.isHost) {
-          handler.processAction?.(data.action);
-          // Auto-broadcast après processAction
+          this.#safeCall(session.id, handler, 'processAction', data.action);
           if (handler.getLocalState) {
-            const state = handler.getLocalState();
-            this.transport.send({ _s: session.id, type: 'fullState', state });
+            const state = this.#safeCall(session.id, handler, 'getLocalState');
+            if (state !== undefined) {
+              this.transport.send({ _s: session.id, type: 'fullState', state });
+            }
           }
         }
         break;
       case 'fullState':
-        handler.applyRemoteState?.(data.state);
+        this.#safeCall(session.id, handler, 'applyRemoteState', data.state);
         break;
       case 'localState':
-        handler.applyRemoteState?.(data.state);
+        this.#safeCall(session.id, handler, 'applyRemoteState', data.state);
         break;
       case 'message':
-        handler.onMessage?.(data.payload);
+        this.#safeCall(session.id, handler, 'onMessage', data.payload);
         break;
+    }
+  }
+
+  // --- Protection des appels handler ---
+
+  #safeCall(sessionId, handler, method, ...args) {
+    try {
+      return handler[method]?.(...args);
+    } catch (e) {
+      console.error(`[P2PSync] Erreur handler ${sessionId}.${method}:`, e);
+      this.onHandlerError?.(sessionId, method, e);
     }
   }
 
@@ -364,8 +424,14 @@ export class P2PSync {
     this.#guard = new StateRunner(guardStates, guardInitial);
     this.#guard.onTransition = (from, to, event) => {
       this.onGuardChange?.(to, { from, to, event });
-      if (to === 'OPEN') this.onPeerAbsent?.();
-      if (from === 'OPEN' && to === 'HALF_OPEN') this.onPeerBack?.();
+      if (to === 'OPEN') {
+        this.onPeerAbsent?.();
+        this.#notifyGuardToSessions('onPeerAbsent');
+      }
+      if (from === 'OPEN' && to === 'HALF_OPEN') {
+        this.onPeerBack?.();
+        this.#notifyGuardToSessions('onPeerBack');
+      }
     };
     this.#resetGuardTimer();
   }
@@ -395,11 +461,16 @@ export class P2PSync {
     this.#resetGuardTimer();
   }
 
+  #notifyGuardToSessions(method) {
+    for (const [id, session] of this.sessions) {
+      if (id === '_presence' || session.state !== 'CONNECTED') continue;
+      this.#safeCall(id, session.handler, method);
+    }
+  }
+
   get guardState() { return this.#guard?.current ?? null; }
 
   // --- Projection couche 2 → P2PSync ---
-
-  #previousLayer2 = null;
 
   #mapTransportState(toL2, fromL2) {
     const syncState = this.sm.current;

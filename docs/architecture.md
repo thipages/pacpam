@@ -786,25 +786,31 @@ IDLE ──────→ CONNECTING ──────→ CONNECTED ───�
 | DISCONNECTED → CONNECTING | Tentative de reconnexion | IDLE → INITIALIZING |
 | DISCONNECTED → IDLE | Abandon / reset | — |
 
-Chaque transition de la couche 2 est remontée intégralement à l'application :
+Chaque transition P2PSync est remontée avec le détail de la cause couche 2 :
 
 ```js
-sync.onStateChange = (state, group, detail) => {
-    // state  : état couche 2 exact ("AUTHENTICATING", "CONNECTED", ...)
-    // group  : groupe P2PSync ("idle", "connecting", "connected", "disconnected")
-    // detail : ID de transition et contexte ({ transition: 'c15', reason: 'PING_TIMEOUT' })
+sync.onStateChange = (state, detail) => {
+    // state  : état P2PSync ("CONNECTING", "CONNECTED", "DISCONNECTED", ...)
+    // detail : {
+    //   from, to, event,           — transition P2PSync
+    //   layer2State,               — état couche 2 courant
+    //   layer2Tid,                 — ID de la transition couche 2 déclenchante (ex: 'c25')
+    //   layer2Event                — événement couche 2 déclenchant (ex: 'PEER_LEFT')
+    // }
 
-    if (group === 'connected') {
+    if (state === 'CONNECTED') {
         showStatus('Connecté');
-    } else if (group === 'connecting') {
+    } else if (state === 'CONNECTING') {
         showStatus('Connexion en cours...');
-    } else if (group === 'disconnected') {
-        showStatus(`Déconnecté : ${detail.reason}`);
+    } else if (state === 'DISCONNECTED') {
+        showStatus(`Déconnecté : ${detail.layer2Tid}`);
+        // detail.layer2Tid distingue les causes :
+        // c25 = pair parti, c26 = ping timeout, c28/c29 = erreur réseau, c30 = déconnexion volontaire
     }
 };
 ```
 
-L'application peut écouter `group` pour un usage simple, ou `state` / `detail.transition` pour un contrôle fin.
+L'application peut écouter `state` pour un usage simple, ou `detail.layer2Tid` / `detail.layer2Event` pour un diagnostic fin de la cause de déconnexion.
 
 #### Guard présence (sur CONNECTED)
 
@@ -836,6 +842,55 @@ Les handlers de session sont notifiés des transitions du guard :
 L'application dispose ainsi de deux niveaux de diagnostic :
 - **Couche 2** (`onStateChange`) : la connexion réseau est-elle active ?
 - **Couche 3** (guard présence) : le pair applicatif est-il réactif ?
+
+#### Reconnexion manuelle
+
+P2PSync ne reconnecte jamais automatiquement. L'application décide quand tenter une reconnexion via `sync.reconnect()`, qui retourne un objet structuré décrivant le résultat :
+
+```js
+// Tentative de reconnexion
+const result = sync.reconnect();
+if (result.ok) {
+    showStatus(`Reconnexion vers ${result.peerId}...`);
+} else if (result.reason === 'circuit_breaker') {
+    showStatus(`Réessayer dans ${Math.ceil(result.retryIn / 1000)}s`);
+} else {
+    showStatus(`Impossible : ${result.reason}`);
+}
+```
+
+Avant de tenter, l'application peut consulter `sync.reconnectInfo` (même structure, sans déclencher la reconnexion) pour adapter son interface (afficher un bouton « Reconnecter » avec un compte à rebours si le CB est actif).
+
+`reconnect()` vérifie trois conditions :
+1. P2PSync est en DISCONNECTED
+2. Un pair précédent est mémorisé (`#lastPeerId`)
+3. La couche 2 est en READY et le circuit breaker n'est pas OPEN
+
+Si le CB est OPEN, la réponse inclut `retryIn` (ms avant la prochaine tentative autorisée) et `peerId` (pour que l'UX puisse afficher quel pair est concerné).
+
+#### Latence (RTT)
+
+P2PSync expose la latence du dernier ping/pong mesuré par la couche 2 :
+
+```js
+sync.onPing = (latency) => {
+    updateLatencyDisplay(latency);
+};
+// Ou lecture directe
+const ms = sync.latency;  // null si aucun ping reçu
+```
+
+#### Protection des appels handler
+
+Tous les appels aux méthodes des handlers de session sont protégés par `#safeCall`. Si un handler lève une exception, elle est capturée, loguée, et remontée via `sync.onHandlerError` sans interrompre le flux de P2PSync :
+
+```js
+sync.onHandlerError = (sessionId, method, error) => {
+    reportError(`Session ${sessionId}.${method} : ${error.message}`);
+};
+```
+
+Les 10 points d'appel dans P2PSync et 2 dans SessionCtrl sont protégés. Une erreur dans `processAction` côté hôte n'empêche pas l'envoi du `fullState`. Une erreur dans `getLocalState` interrompt uniquement l'envoi de cet état.
 
 #### Sessions — machines parallèles
 
@@ -870,9 +925,12 @@ Transport {
     disconnect()                 // Fermer la connexion
     send(data)                   // Envoyer un objet JS
     onData(callback)             // S'abonner aux données entrantes
-    onStateChange(callback)      // S'abonner aux transitions SM
+    onStateChange(callback)      // S'abonner aux transitions SM — callback(state, tid, from, event)
     isConnected()                // État courant
     isHost                       // Rôle (lecture seule)
+    state                        // État SM couche 2 (lecture seule)
+    remotePeerId                 // PeerId du pair distant connecté, ou null (lecture seule)
+    circuitBreakerInfo(peerId?)  // Info CB : { state, nextAttemptTime } ou null
 }
 ```
 

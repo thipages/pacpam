@@ -142,7 +142,7 @@ IDLE →(s1) CONNECTING →(s2) CONNECTED →(s3) DISCONNECTED
 
 | De | Transition | Déclencheur |
 |----|------------|-------------|
-| DISCONNECTED | p5 RECONNECT | Système (reconnexion automatique) |
+| DISCONNECTED | p5 RECONNECT | ▶ Application (`sync.reconnect()`) |
 
 ---
 
@@ -208,8 +208,8 @@ Quand p4 se déclenche, toutes les sessions en cours (CONNECTING ou CONNECTED) r
 | CONNECTING → CONNECTED | p2 | Système | Interface principale | Toast : "Connecté" |
 | CONNECTED → DISCONNECTED | p4 (c25) | Pair distant | Bandeau "Déconnecté" | Toast : "Le contact a quitté" |
 | CONNECTED → DISCONNECTED | p4 (c30) | ▶ utilisateur | Retour écran initial | Silencieux |
-| CONNECTED → DISCONNECTED | p4 (c26/c28/c29) | Réseau | Bandeau "Reconnexion..." | Toast : "Connexion perdue" |
-| DISCONNECTED → CONNECTING | p5 | Système | Spinner "Reconnexion..." | Automatique |
+| CONNECTED → DISCONNECTED | p4 (c26/c28/c29) | Réseau | Bandeau "Connexion perdue" | Bouton "Reconnecter" |
+| DISCONNECTED → CONNECTING | p5 | ▶ Application | Spinner "Reconnexion..." | Via `sync.reconnect()` |
 
 > Pendant CONNECTING, l'application peut écouter `onStateChange` pour afficher les étapes détaillées (serveur → contact → auth) — mais ce n'est pas obligatoire. L'état groupé "Connexion..." suffit pour la plupart des usages.
 
@@ -286,13 +286,13 @@ Quand p4 se déclenche, toutes les sessions en cours (CONNECTING ou CONNECTED) r
 
 | Couple | Transition | Feedback | Comportement |
 |--------|-----------|----------|-------------|
-| CONNECTED → DISCONNECTED | p4 (c26/c28/c29) | Bandeau "Reconnexion en cours..." | Reconnexion auto (p5) après délai |
-| CONNECTED → DISCONNECTED | p4 (c25) | Toast : "Le contact a quitté" | Pas de reconnexion auto |
+| CONNECTED → DISCONNECTED | p4 (c26/c28/c29) | Bandeau "Connexion perdue" | Bouton "Reconnecter" (`sync.reconnectInfo` pour l'état) |
+| CONNECTED → DISCONNECTED | p4 (c25) | Toast : "Le contact a quitté" | Pas de reconnexion |
 | CONNECTED → DISCONNECTED | p4 (c30) | Silencieux (▶ utilisateur) | Retour à IDLE |
-| DISCONNECTED → CONNECTING | p5 | Spinner "Reconnexion..." | Automatique |
-| DISCONNECTED → IDLE | p6 | Retour écran d'accueil | Fin du cycle de reconnexion |
+| DISCONNECTED → CONNECTING | p5 | Spinner "Reconnexion..." | Via `sync.reconnect()` (▶ application) |
+| DISCONNECTED → IDLE | p6 | Retour écran d'accueil | Abandon |
 
-> Pendant la reconnexion (DISCONNECTED → CONNECTING), la zone principale se grise avec un overlay "Reconnexion...". Si la reconnexion réussit (p2), l'overlay disparaît et l'hôte recrée les sessions — l'utilisateur retrouve son interface.
+> La reconnexion est manuelle : l'application appelle `sync.reconnect()` quand l'utilisateur clique "Reconnecter". Avant d'afficher le bouton, consulter `sync.reconnectInfo` pour vérifier si le CB est actif (afficher un compte à rebours). Si la reconnexion réussit (p2), l'overlay disparaît et l'hôte recrée les sessions.
 
 ### Guard — pair absent
 
@@ -471,7 +471,7 @@ Pair A envoie localState → [RTT/2] → Pair B reçoit → [1 tick] → Pair B 
 
 - **Prédiction locale** : en mode centralisé, le guest appelle `processAction()` localement avant confirmation de l'hôte — l'action est immédiate côté UI, corrigée par le `fullState` autoritaire
 - **Interpolation** : pour les positions (curseurs, personnages), interpoler entre le dernier état reçu et le suivant plutôt qu'afficher par à-coups
-- **Indicateur de latence** : afficher le RTT si > 100ms (jaune) ou > 200ms (rouge). Le RTT est disponible via `onPing(latency)` de la couche 2
+- **Indicateur de latence** : afficher le RTT si > 100ms (jaune) ou > 200ms (rouge). Le RTT est disponible via `sync.onPing(latency)` et `sync.latency` (couche 3)
 - **Pas de freeze** : ne jamais bloquer l'UI en attendant un message. Si un tick manque, conserver le dernier état reçu
 
 ### Dimensionnement guard timeout vs fps
@@ -509,8 +509,8 @@ Niveau 1 ── PAIR ABSENT (guard OPEN)
 
 Niveau 2 ── DÉCONNECTÉ (P2PSync DISCONNECTED)
     Connexion perdue, sessions détruites
-    └── Overlay "Reconnexion...", tout grisé
-    └── Réversible : p5 → p2 → recréation sessions → retour niveau 0
+    └── Overlay "Connexion perdue" + bouton "Reconnecter"
+    └── Réversible : sync.reconnect() → p5 → p2 → recréation sessions → retour niveau 0
 
 Niveau 3 ── BLOQUÉ (CB OPEN)
     3 échecs consécutifs, disjoncteur ouvert
@@ -573,7 +573,7 @@ Le pair est injoignable et le ping timeout de la couche 2 se déclenche.
          └── P2PSync DISCONNECTED
          └── Guard détruit
          └── Toutes sessions → DISCONNECTED
-         └── UI : overlay "Connexion perdue — Reconnexion..."
+         └── UI : overlay "Connexion perdue" + bouton "Reconnecter"
 ```
 
 **UX** :
@@ -581,10 +581,10 @@ Le pair est injoignable et le ping timeout de la couche 2 se déclenche.
 | Phase | Durée | UI | Action utilisateur |
 |-------|:-----:|----|--------------------|
 | Pair absent | 5–10s | Overlay pause | Patienter |
-| Déconnexion | 10s | Overlay "Connexion perdue" | Patienter (reconnexion auto) ou abandonner |
-| Reconnexion en cours | 10–15s | Spinner "Reconnexion..." | Patienter |
+| Déconnexion | 10s | Overlay "Connexion perdue" | Cliquer "Reconnecter" (`sync.reconnect()`) ou abandonner |
+| Reconnexion en cours | variable | Spinner "Reconnexion..." | Patienter |
 | Reconnexion réussie | — | Interfaces réapparaissent | Aucune |
-| Reconnexion échouée (×3) | — | "Nouvelle tentative dans 30s" | Patienter ou abandonner |
+| CB OPEN (après échecs) | — | `sync.reconnectInfo` → "Nouvelle tentative dans Xs" | Patienter ou abandonner |
 
 ### Scénario 4 — Échecs répétés et circuit breaker
 
@@ -606,7 +606,7 @@ Quand la reconnexion échoue 3 fois consécutivement, le disjoncteur (couche 2) 
 **UX** :
 - Compteur dégressif visible : "Nouvelle tentative dans 28s..."
 - Bouton "Abandonner" toujours accessible (→ p6 RESET → IDLE)
-- Pas de tentative manuelle possible pendant le blocage CB — expliquer pourquoi : "Trop de tentatives échouées"
+- `sync.reconnectInfo` retourne `{ canReconnect: false, reason: 'circuit_breaker', retryIn }` — l'UI peut afficher le compte à rebours et désactiver le bouton "Reconnecter"
 
 **Timing total pire cas** : 3 × 10s (timeouts) + 30s (CB) = **60s** avant la prochaine tentative. L'UI doit préparer l'utilisateur à cette attente.
 
@@ -671,11 +671,11 @@ _presence CONNECTED ─────────→ _presence CONNECTED (auto)
     │          └── Boucle locale continue (prédiction)
     │
     ├── t=10s  p4 TRANSPORT_LOST
-    │          └── Overlay change : "Connexion perdue — Reconnexion..."
+    │          └── Overlay : "Connexion perdue" + bouton "Reconnecter"
     │          └── Sessions détruites, boucle arrêtée
-    │          └── Compteur : "Reconnexion dans 3... 2... 1..."
     │
-    ├── t=13s  p5 RECONNECT → CONNECTING
+    ├── t=12s  ▶ Utilisateur clique "Reconnecter" → sync.reconnect()
+    │          └── p5 RECONNECT → CONNECTING
     │          └── Spinner "Connexion au serveur..."
     │
     ├── t=16s  p2 TRANSPORT_CONNECTED

@@ -77,7 +77,9 @@ export class SessionCtrl {
   broadcastState() {
     const handler = this.#session.handler;
     if (!handler?.getLocalState) return;
-    const state = handler.getLocalState();
+    let state;
+    try { state = handler.getLocalState(); }
+    catch (e) { console.error(`[Session:${this.id}] Erreur broadcastState.getLocalState:`, e); return; }
     if (this.#session.mode === 'centralized' && this.#isHost) {
       this.#sendFn({ _s: this.id, type: 'fullState', state });
     } else if (this.#session.mode === 'independent') {
@@ -96,7 +98,8 @@ export class SessionCtrl {
       return;
     }
     // Prédiction locale
-    this.#session.handler?.processAction?.(action);
+    try { this.#session.handler?.processAction?.(action); }
+    catch (e) { console.error(`[Session:${this.id}] Erreur sendAction.processAction:`, e); }
     this.#sendFn({ _s: this.id, type: 'action', action });
   }
 

@@ -160,50 +160,163 @@ import { connectionStates, connectionInitial } from '@thipages/pacpam';
 
 ## Sync
 
-### `P2PSync`
+### `PeerTransport`
 
-Synchronisation unifiée temps réel et tour par tour.
+Adaptateur entre `NetworkManager` et `P2PSync`. Expose un contrat transport minimal pour découpler P2PSync des détails de la couche 2.
 
 ```javascript
-import { P2PSync } from '@thipages/pacpam';
-const sync = new P2PSync({ fps: 30 }); // temps réel
-const sync = new P2PSync({ fps: 0 });  // tour par tour
+import { PeerTransport, NetworkManager } from '@thipages/pacpam';
+const network = new NetworkManager();
+const transport = new PeerTransport(network);
 ```
-
-**Constructeur**
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `fps` | `number` | `> 0` : envoi périodique (temps réel). `0` : envoi à la demande (tour par tour). |
 
 **Méthodes**
 
 | Méthode | Retour | Description |
 |---------|--------|-------------|
-| `setup(isHost, sendCallback, session)` | `void` | Initialise la sync. Démarre la boucle si `fps > 0`. |
-| `receiveMessage(data)` | `void` | Traite un message reçu du réseau. |
-| `broadcastState()` | `void` | (Hôte) Envoie l'état complet immédiatement. |
-| `sendAction(action)` | `void` | (Guest) Envoie une action à l'hôte. |
-| `stop()` | `void` | Arrête la synchronisation. |
+| `init(pseudo, appId)` | `void` | Initialise PeerJS via `NetworkManager`. |
+| `connect(peerId)` | `void` | Initie une connexion vers un pair distant. |
+| `disconnect()` | `void` | Ferme la connexion. |
+| `send(data)` | `boolean` | Envoie des données au pair connecté. |
+| `isConnected()` | `boolean` | `true` si la couche 2 est CONNECTED. |
+| `authSuccess()` | `void` | Signale que l'authentification a réussi. |
+| `authFailed()` | `void` | Signale que l'authentification a échoué. |
+| `addDataListener(cb)` | `void` | Ajoute un listener interne pour les données entrantes. |
+| `addPingListener(cb)` | `void` | Ajoute un listener interne pour les pings. |
+| `onStateChange(cb)` | `void` | Ajoute un listener pour les transitions SM couche 2. Callback : `(state, tid, from, event)`. |
+| `circuitBreakerInfo(peerId?)` | `object\|null` | Info CB d'un pair : `{ state, nextAttemptTime }`. Par défaut : pair connecté. |
 
-**Contrat duck-typing `session`**
+**Propriétés (lecture seule)**
 
-L'objet `session` doit implémenter :
+| Propriété | Type | Description |
+|-----------|------|-------------|
+| `state` | `string` | État courant de la SM couche 2. |
+| `isHost` | `boolean` | `true` si le pair local est l'hôte. |
+| `myId` | `string` | ID PeerJS local. |
+| `myPseudo` | `string` | Pseudo local. |
+| `remotePeerId` | `string\|null` | PeerId du pair distant connecté (ou `null`). |
 
-| Propriété / Méthode | Requis | Description |
-|---------------------|--------|-------------|
-| `getLocalState()` | oui | Retourne l'état à envoyer. |
-| `applyRemoteState(state)` | oui | Applique l'état reçu. |
-| `processAction(action)` | non | (Hôte) Traite une action du guest. |
-| `isRunning` | oui | `boolean` — la session est active. |
+**Callbacks passthrough**
 
-**Types de messages réseau**
+| Callback | Signature | Description |
+|----------|-----------|-------------|
+| `onIdReady` | `(id: string) => void` | PeerJS est connecté, l'ID est attribué. |
+| `onConnected` | `(isHost: boolean) => void` | Connexion authentifiée et prête. |
+| `onDisconnected` | `() => void` | Connexion perdue. |
+| `onAuthRequired` | `(isHost: boolean) => void` | Authentification requise. |
+| `onData` | `(data: object) => void` | Données reçues (listener applicatif). |
+| `onError` | `(error: Error) => void` | Erreur réseau. |
+| `onPing` | `(latency: number) => void` | Latence mesurée (listener applicatif). |
 
-| Type | Envoyé par | Contenu |
-|------|-----------|---------|
-| `fullState` | Hôte | `{ type: 'fullState', state }` |
-| `peerState` | Guest | `{ type: 'peerState', state }` |
-| `action` | Guest | `{ type: 'action', action }` |
+---
+
+### `P2PSync`
+
+Façade applicative de pacpam. Gère les sessions multiplexées, la présence, la reconnexion et le diagnostic.
+
+```javascript
+import { P2PSync, PeerTransport, NetworkManager } from '@thipages/pacpam';
+const transport = new PeerTransport(new NetworkManager());
+const sync = new P2PSync(transport, { guardTimeout: 5000 });
+```
+
+**Constructeur**
+
+| Param | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `transport` | `object` | *(requis)* | Objet implémentant le contrat transport. |
+| `options.guardTimeout` | `number` | `5000` | Délai (ms) sans données avant que le guard passe à OPEN. |
+
+**Méthodes**
+
+| Méthode | Retour | Description |
+|---------|--------|-------------|
+| `createSession(id, config, handler)` | `void` | Crée une session (hôte). `config` : `{ mode, fps }`. |
+| `getSession(id)` | `SessionCtrl\|null` | Retourne le contrôleur d'une session. |
+| `endSession(id)` | `void` | Termine une session (hôte). |
+| `setPresence(data)` | `void` | Définit les données de présence locales. |
+| `feedGuard()` | `void` | Nourrit le guard (appelé automatiquement sur réception de données). |
+| `reconnect()` | `object` | Tente une reconnexion vers le dernier pair. Voir ci-dessous. |
+
+**Propriétés (lecture seule)**
+
+| Propriété | Type | Description |
+|-----------|------|-------------|
+| `state` | `string` | État P2PSync : `IDLE`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`. |
+| `isConnected` | `boolean` | `true` si P2PSync est CONNECTED. |
+| `isHost` | `boolean` | `true` si le pair local est l'hôte. |
+| `guardState` | `string\|null` | État du guard : `HALF_OPEN`, `CLOSED`, `OPEN` (ou `null` si inactif). |
+| `latency` | `number\|null` | Dernière latence mesurée (ms), ou `null`. |
+| `reconnectInfo` | `object\|null` | Info reconnexion pour l'UX. `null` si pas en DISCONNECTED. |
+| `presenceSuspended` | `boolean` | `true` si `_presence` est suspendue. |
+
+**Callbacks**
+
+| Callback | Signature | Description |
+|----------|-----------|-------------|
+| `onStateChange` | `(state, detail) => void` | Transition P2PSync. `detail` : `{ from, to, event, layer2State, layer2Tid, layer2Event }`. |
+| `onGuardChange` | `(state, detail) => void` | Transition guard. `detail` : `{ from, to, event }`. |
+| `onPeerAbsent` | `() => void` | Guard passe à OPEN (pair absent). |
+| `onPeerBack` | `() => void` | Guard revient de OPEN (pair de retour). |
+| `onSessionCreate` | `(id, config) => handler` | Guest : P2PSync demande un handler pour la session créée par l'hôte. |
+| `onSessionStateChange` | `(sessionId, state) => void` | Transition d'une session. |
+| `onPing` | `(latency) => void` | Latence mesurée (ms). |
+| `onPresence` | `(data) => void` | Données de présence du pair distant. |
+| `onPresenceSuspensionChange` | `(suspended) => void` | `_presence` suspendue/reprise. |
+| `onHandlerError` | `(sessionId, method, error) => void` | Erreur capturée dans un appel handler. |
+
+**Reconnexion manuelle**
+
+`reconnect()` retourne un objet décrivant le résultat :
+
+| Retour | Signification |
+|--------|---------------|
+| `{ ok: true, peerId }` | Reconnexion lancée. |
+| `{ ok: false, reason: 'not_disconnected' }` | P2PSync n'est pas en DISCONNECTED. |
+| `{ ok: false, reason: 'no_peer' }` | Aucun pair précédent. |
+| `{ ok: false, reason: 'transport_not_ready' }` | Couche 2 pas en READY. |
+| `{ ok: false, reason: 'circuit_breaker', retryIn, peerId }` | CB ouvert, `retryIn` ms avant la prochaine tentative. |
+
+`reconnectInfo` retourne les mêmes informations sous forme `{ canReconnect, reason?, retryIn?, peerId? }` sans déclencher la reconnexion.
+
+---
+
+### `SessionCtrl`
+
+Contrôleur de session, reçu par le handler dans `onStart(ctrl)` et accessible via `sync.getSession(id)`.
+
+**Méthodes**
+
+| Méthode | Retour | Description |
+|---------|--------|-------------|
+| `setFps(n)` | `void` | Change le fps (hôte uniquement). |
+| `broadcastState()` | `void` | Envoie `getLocalState()` immédiatement. |
+| `sendAction(action)` | `void` | Envoie une action (centralisé, guest uniquement). |
+| `sendMessage(payload)` | `void` | Envoie un message (indépendant uniquement). |
+
+**Propriétés (lecture seule)**
+
+| Propriété | Type | Description |
+|-----------|------|-------------|
+| `id` | `string` | Identifiant de la session. |
+| `mode` | `string` | `'centralized'` ou `'independent'`. |
+| `fps` | `number` | Fréquence courante. |
+| `state` | `string` | État de la session : `IDLE`, `CONNECTING`, `CONNECTED`, `DISCONNECTED`. |
+
+**Handler — contrat duck-typed**
+
+| Méthode | Signature | Rôle |
+|---------|-----------|------|
+| `onStart(ctrl)` | `(SessionCtrl) => void` | Session CONNECTED. |
+| `onEnd()` | `() => void` | Session DISCONNECTED. |
+| `getLocalState()` | `() => object` | État local à envoyer. |
+| `applyRemoteState(state)` | `(object) => void` | Applique l'état distant. |
+| `processAction(action)` | `(object) => void` | Traite une action (centralisé). |
+| `onMessage(payload)` | `(object) => void` | Reçoit un message (indépendant). |
+| `onPeerAbsent()` | `() => void` | Guard OPEN propagé à la session. |
+| `onPeerBack()` | `() => void` | Guard retour propagé à la session. |
+
+Toutes les méthodes sont optionnelles. Les erreurs sont capturées par `#safeCall` et remontées via `sync.onHandlerError`.
 
 ---
 
@@ -222,9 +335,9 @@ import { validateMessage, registerMessageSchemas } from '@thipages/pacpam';
 | `validateMessage(data)` | `(object) => boolean` | Valide type, champs requis, tailles, profondeur. |
 | `registerMessageSchemas(schemas)` | `(object) => void` | Enregistre des schémas applicatifs supplémentaires. |
 | `sanitizeString(str, maxLength?)` | `(string, number?) => string` | Échappe HTML et caractères de contrôle. Max 1000 chars par défaut. |
-| `sanitizeGameState(state)` | `(object) => object` | Nettoie récursivement toutes les strings d'un objet. |
+| `sanitizeState(state)` | `(object) => object` | Nettoie récursivement toutes les strings d'un objet. |
 
-**Schémas protocolaires intégrés** : `auth`, `ping`, `pong`, `fullState`, `peerState`, `action`
+**Schémas protocolaires intégrés** : `auth`, `ping`, `pong`, `fullState`, `localState`, `action`, `message`, `_ctrl`
 
 **Limites de sécurité** :
 - Message max : 50 Ko
@@ -274,7 +387,7 @@ import { rateLimiter, RateLimiter, MESSAGE_RATE_LIMITS } from '@thipages/pacpam'
 
 | Type | Max | Fenêtre |
 |------|-----|---------|
-| `peerState` / `fullState` | 35 | 1s |
+| `localState` / `fullState` | 35 | 1s |
 | `action` | 10 | 1s |
 | `auth` | 5 | 10s |
 | `ping` / `pong` | 2 | 3s |

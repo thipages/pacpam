@@ -57,6 +57,7 @@ const TEMPLATE = `
   <div class="ci-status-bar">
     <span data-ref="dot" class="ci-dot"></span>
     <span data-ref="statusText" class="ci-status-text">Connecté</span>
+    <span data-ref="latencyText" class="ci-latency"></span>
     <span class="ci-spacer"></span>
     <button data-ref="btnQuit" class="ci-btn ci-btn-danger ci-btn-sm">Quitter</button>
   </div>
@@ -266,6 +267,7 @@ class ChatInstance extends HTMLElement {
         case 'DISCONNECTED':
           this.#refs.msgInput.disabled = true
           this.#refs.btnSend.disabled = true
+          this.#refs.latencyText.textContent = ''
           this.#handleDisconnected()
           break
 
@@ -285,6 +287,14 @@ class ChatInstance extends HTMLElement {
 
     this.#sync.onPeerBack = () => {
       this.#showToast('Pair de retour')
+    }
+
+    this.#sync.onPing = (latency) => {
+      this.#refs.latencyText.textContent = `${latency}ms`
+    }
+
+    this.#sync.onHandlerError = (sessionId, method, error) => {
+      console.error(`[chat-ux] Handler erreur ${sessionId}.${method}:`, error)
     }
 
     this.#sync.onSessionCreate = (id, config) => {
@@ -378,12 +388,16 @@ class ChatInstance extends HTMLElement {
       btnReconnect.className = 'ci-btn ci-btn-accent ci-btn-sm'
       btnReconnect.textContent = 'Reconnecter'
       btnReconnect.addEventListener('click', () => {
-        this.#hideOverlayReconnect()
-        this.#cleanup()
-        this.#showScreen('login')
-        this.#resetLogin()
-        this.#refs.pseudo.value = this.#myPseudo
-        this.#refs.password.value = this.#password
+        const result = this.#sync.reconnect()
+        if (result.ok) {
+          this.#refs.reconnectText.textContent = 'Reconnexion en cours...'
+          this.#refs.reconnectActions.innerHTML = ''
+        } else if (result.reason === 'circuit_breaker') {
+          const secs = Math.ceil(result.retryIn / 1000)
+          this.#refs.reconnectText.textContent = `Trop de tentatives — réessayer dans ${secs}s`
+        } else {
+          this.#refs.reconnectText.textContent = `Impossible : ${result.reason}`
+        }
       })
 
       const btnAbandon = document.createElement('button')

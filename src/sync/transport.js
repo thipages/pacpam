@@ -109,4 +109,15 @@ export class PeerTransport {
 
   /** État couche 2 courant */
   get state()             { return this.#network.sm.current; }
+
+  /** PeerId du pair distant connecté (ou null) */
+  get remotePeerId()      { return this.#network.connection?.peer ?? null; }
+
+  /** Info circuit breaker d'un pair : { state, nextAttemptTime } ou null */
+  circuitBreakerInfo(peerId = this.remotePeerId) {
+    if (!peerId) return null;
+    const cb = this.#network.circuitBreakers.get(peerId);
+    if (!cb) return null;
+    return { state: cb.sm.current, nextAttemptTime: cb.nextAttemptTime };
+  }
 }

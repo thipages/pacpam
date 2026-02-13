@@ -1,6 +1,6 @@
 {
   "name": "@thipages/pacpam",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation",
   "type": "module",
   "main": "src/index.js",

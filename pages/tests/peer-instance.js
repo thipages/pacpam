@@ -339,7 +339,7 @@ export class PeerInstance extends HTMLElement {
 
         // --- SM P2PSync ---
         this.sync.onStateChange = (state, detail) => {
-            log(`Sync: ${detail.from} → ${state} [${detail.event}]`);
+            log(`Sync: ${detail.from} → ${state} [${detail.event}] (L2: ${detail.layer2Tid ?? '—'} ${detail.layer2Event ?? ''})`);
             const syncEl = $('#sync-state');
             syncEl.textContent = state;
             const cssGroup = state === 'CONNECTED' ? 'connected'
@@ -381,6 +381,14 @@ export class PeerInstance extends HTMLElement {
         this.sync.onPresenceSuspensionChange = (suspended) => {
             $('#presence-status').textContent = suspended ? 'suspendue' : 'active (0.5fps)';
             log(`[_presence] ${suspended ? 'suspendue' : 'reprise'}`);
+        };
+
+        this.sync.onPing = (latency) => {
+            log(`Ping: ${latency}ms`);
+        };
+
+        this.sync.onHandlerError = (sessionId, method, error) => {
+            log(`⚠ Handler erreur: ${sessionId}.${method} — ${error.message}`);
         };
 
         // --- Boutons ---

@@ -275,9 +275,9 @@ La session échoue mais le serveur de signalisation reste accessible.
 | AUTH→READY | c20 | Toast warning : "Délai d'authentification dépassé" | Réessayer |
 | AUTH→READY | c21 | Toast warning : "Connexion fermée par le contact" | Réessayer |
 | AUTH→READY | c22, c23 | Toast erreur : "Erreur serveur/connexion" | Réessayer |
-| CONNECTED→READY | c26, c28, c29 | Toast warning : "Contact injoignable / connexion perdue" | Reconnexion auto 3s |
+| CONNECTED→READY | c26, c28, c29 | Toast warning : "Contact injoignable / connexion perdue" | Bouton "Reconnecter" (P2PSync gère via `sync.reconnect()`) |
 
-> Pour les auto-retry (c26, c28, c29) : la zone de chat se grise avec un bandeau "Reconnexion..."
+> Pour c26, c28, c29 : la zone de chat se grise avec un overlay "Connexion perdue". La reconnexion est manuelle via `sync.reconnect()` (couche 3).
 
 ### Connexion → CONNECTED (auto-réparation)
 

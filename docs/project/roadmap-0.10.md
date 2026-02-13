@@ -42,19 +42,24 @@ Chaque point sera évalué et décidé individuellement avant implémentation.
 
 ### Manques couche 3 (audit)
 
-- [ ] **Détail transition couche 2** : `onStateChange` de P2PSync ne remonte pas le `tid` de la transition couche 2. L'application ne peut pas distinguer c25 (pair parti) de c26 (ping timeout), c28 (signaling error), c29 (connection error) ou c30 (utilisateur). Ajouter `transition` dans l'objet `detail`
-- [ ] **Guard → handlers** : `onPeerAbsent()` / `onPeerBack()` ne sont jamais appelés sur les handlers de session — seuls les callbacks globaux `sync.onPeerAbsent` / `sync.onPeerBack` fonctionnent. Propager les notifications du guard à chaque handler de session actif
-- [ ] **Signaling lost (c27)** : le self-loop c27 n'est pas remonté à P2PSync ni à l'application. Impossible d'afficher un indicateur "signalisation perdue" comme recommandé par le guide UX. Exposer un événement ou callback dédié
-- [ ] **Circuit breaker → transport** : exposer l'état du CB dans le contrat transport (callback `onCircuitBreakerChange(state, nextAttemptTime)` sur `PeerTransport`) pour distinguer "connexion en cours" de "bloqué par le disjoncteur"
-- [ ] **Reconnexion automatique (p5)** : la transition p5 (DISCONNECTED → CONNECTING) est définie mais jamais déclenchée. Ajouter une stratégie de retry (backoff, nombre max de tentatives) dans P2PSync, tenant compte de l'état du circuit breaker
-- [ ] **onPing** : le RTT n'est pas exposé par P2PSync, uniquement via `transport.onPing`. Ajouter un proxy `sync.onPing` pour cohérence avec l'API façade
-- [ ] **Exceptions handlers** : aucun try-catch autour des appels aux méthodes des handlers. Une exception dans `getLocalState()` ou `onMessage()` crash la boucle sync. Envelopper les appels dans des try-catch
+- [x] **Détail transition couche 2** : `onStateChange` enrichi avec `layer2Tid` et `layer2Event` dans `detail`
+- [x] **Guard → handlers** : `onPeerAbsent()` / `onPeerBack()` propagés aux handlers de session via `#notifyGuardToSessions`
+- ~~**Signaling lost (c27)**~~ : annulé — c27 est un détail d'infrastructure PeerJS géré automatiquement par la couche 2. Voir travaux futurs ci-dessous
+- [x] **Circuit breaker → transport + reconnexion (p5)** : getter `transport.circuitBreakerInfo(peerId)` (lecture Map CB par peer) + `transport.remotePeerId`. `sync.reconnect()` et `sync.reconnectInfo` exposent l'état CB et pilotent la reconnexion manuelle (pas d'auto-retry). Réponses typées avec `peerId` pour isoler les CB par pair
+- [x] **onPing** : callback `sync.onPing(latency)` + propriété `sync.latency`
+- [x] **Exceptions handlers** : helper `#safeCall` dans P2PSync (10 points protégés) + try-catch dans SessionCtrl (2 points). Callback `sync.onHandlerError`
 
 ### Application
 
 - [x] `pages/chat-ux/` : chat minimaliste orienté UX (voir `docs/project/chat-ux.md`)
 
 ---
+
+### Travaux futurs (hors v0.10.x)
+
+- [ ] **Détacher le signaling en CONNECTED** : en mode 1-to-1, couper la connexion au serveur PeerJS une fois le DataChannel établi (`peer.disconnect()`). Allège les ressources, libère un slot serveur. Reconnexion au serveur uniquement si reconnexion P2P nécessaire. Changement SM couche 2.
+- [ ] **Topologie N > 2 pairs** : refonte du contrat transport (`send(peerId, data)`, `onData(peerId, cb)`), topologie configurable (mesh/star), probablement une façade `MultiPeerSync` distincte. Le maintien du signaling en CONNECTED est pertinent dans ce modèle.
+- [ ] **Protection connexions entrantes non sollicitées (couche 2)** : actuellement, toute connexion entrante est acceptée si `this.connection` n'est pas déjà ouverte (`network.js:196`). Un attaquant peut se connecter et bloquer la SM en AUTHENTICATING pendant AUTH_TIMEOUT (5s), empêchant toute connexion sortante. Avec N attaquants qui se relaient, le blocage est permanent. Solution : refuser les connexions entrantes si la SM n'est pas en READY, ou si une connexion sortante est en cours. Optionnellement, notifier l'application des tentatives rejetées (sans passer par P2PSync — c'est une responsabilité couche 2).
 
 ### Décisions prises
 
