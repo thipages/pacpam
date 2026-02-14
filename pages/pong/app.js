@@ -1,4 +1,4 @@
-import './chat-instance.js'
+import './pong-instance.js'
 
 const testMode = new URLSearchParams(location.search).has('test')
 
@@ -6,11 +6,11 @@ if (testMode) {
   const wrapper = document.createElement('div')
   wrapper.className = 'split'
 
-  const peerA = document.createElement('chat-instance')
-  peerA.setAttribute('pseudo', 'ALICE')
+  const peerA = document.createElement('pong-instance')
+  peerA.setAttribute('pseudo', 'PEER-A')
 
-  const peerB = document.createElement('chat-instance')
-  peerB.setAttribute('pseudo', 'BOB')
+  const peerB = document.createElement('pong-instance')
+  peerB.setAttribute('pseudo', 'PEER-B')
 
   wrapper.append(peerA, peerB)
   document.body.appendChild(wrapper)
@@ -25,7 +25,6 @@ if (testMode) {
   })
 
   // Pré-remplir uniquement pseudo et mot de passe
-  // Le pseudo distant est injecté par le cross-wire (id-ready)
   const fill = (el, ref, val) => {
     const input = el.querySelector(`[data-ref="${ref}"]`)
     if (input) input.value = val
@@ -35,6 +34,6 @@ if (testMode) {
   fill(peerB, 'password', 'test')
 
 } else {
-  const instance = document.createElement('chat-instance')
+  const instance = document.createElement('pong-instance')
   document.body.appendChild(instance)
 }

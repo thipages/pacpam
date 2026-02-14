@@ -105,7 +105,7 @@ async function normalFlow(log) {
 
 // #c14 (ou #c13 si timeout)
 async function peerUnavailable(log) {
-  log('step', 'Peer inexistant');
+  log('step', 'Pair inexistant');
   const d = new TestDriver(uniqueAppId(), 'secret', { rawAppId: true });
   try {
     const bob = d.createChat('BOB');
@@ -118,7 +118,7 @@ async function peerUnavailable(log) {
 
     const ids = collectIds(d);
     addCovered(ids);
-    scenarioResults.push({ name: 'Peer inexistant', ids: [...ids] });
+    scenarioResults.push({ name: 'Pair inexistant', ids: [...ids] });
     log('pass', formatIds(ids));
   } finally {
     d.cleanup();
@@ -193,7 +193,7 @@ async function idTaken(log) {
 
 // #c11
 async function disconnectReady(log) {
-  log('step', 'Disconnect depuis READY');
+  log('step', 'Déconnexion depuis READY');
   const d = new TestDriver(uniqueAppId(), 'secret', { rawAppId: true });
   try {
     const alice = d.createChat('ALICE');
@@ -205,7 +205,7 @@ async function disconnectReady(log) {
 
     const ids = collectIds(d);
     addCovered(ids);
-    scenarioResults.push({ name: 'Disconnect READY', ids: [...ids] });
+    scenarioResults.push({ name: 'Déconnexion READY', ids: [...ids] });
     log('pass', formatIds(ids));
   } finally {
     d.cleanup();
@@ -214,7 +214,7 @@ async function disconnectReady(log) {
 
 // #c17
 async function disconnectConnecting(log) {
-  log('step', 'Disconnect depuis CONNECTING');
+  log('step', 'Déconnexion depuis CONNECTING');
   const d = new TestDriver(uniqueAppId(), 'secret', { rawAppId: true });
   try {
     const alice = d.createChat('ALICE');
@@ -234,7 +234,7 @@ async function disconnectConnecting(log) {
 
     const ids = collectIds(d);
     addCovered(ids);
-    scenarioResults.push({ name: 'Disconnect CONNECTING', ids: [...ids] });
+    scenarioResults.push({ name: 'Déconnexion CONNECTING', ids: [...ids] });
     log('pass', formatIds(ids));
   } finally {
     d.cleanup();
@@ -243,7 +243,7 @@ async function disconnectConnecting(log) {
 
 // #c24
 async function disconnectAuthenticating(log) {
-  log('step', 'Disconnect depuis AUTHENTICATING');
+  log('step', 'Déconnexion depuis AUTHENTICATING');
   const d = new TestDriver(uniqueAppId(), 'secret', { rawAppId: true });
   try {
     const alice = d.createChat('ALICE');
@@ -262,7 +262,7 @@ async function disconnectAuthenticating(log) {
 
     const ids = collectIds(d);
     addCovered(ids);
-    scenarioResults.push({ name: 'Disconnect AUTHENTICATING', ids: [...ids] });
+    scenarioResults.push({ name: 'Déconnexion AUTHENTICATING', ids: [...ids] });
     log('pass', formatIds(ids));
   } finally {
     d.cleanup();
@@ -309,7 +309,7 @@ async function authTimeout(log) {
 
 // #c21
 async function closeAuthenticating(log) {
-  log('step', 'Close pendant AUTHENTICATING');
+  log('step', 'Fermeture pendant AUTHENTICATING');
   const appId = uniqueAppId();
   // Peer brut qui ferme la connexion dès qu'elle s'ouvre
   const targetId = `${appId}-TARGET`;
@@ -335,7 +335,7 @@ async function closeAuthenticating(log) {
 
     const ids = collectIds(d);
     addCovered(ids);
-    scenarioResults.push({ name: 'Close AUTHENTICATING', ids: [...ids] });
+    scenarioResults.push({ name: 'Fermeture AUTHENTICATING', ids: [...ids] });
     log('pass', formatIds(ids));
   } finally {
     rawPeer.destroy();

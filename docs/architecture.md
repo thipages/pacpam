@@ -868,6 +868,94 @@ Avant de tenter, l'application peut consulter `sync.reconnectInfo` (même struct
 
 Si le CB est OPEN, la réponse inclut `retryIn` (ms avant la prochaine tentative autorisée) et `peerId` (pour que l'UX puisse afficher quel pair est concerné).
 
+#### Persistance de l'état applicatif après reconnexion
+
+**Comportement par défaut** : aucune session ne survit à une déconnexion. À la perte de connexion, toutes les sessions passent en DISCONNECTED, `handler.onEnd()` est appelé, et les handlers sont détruits. Si les pairs se reconnectent, l'hôte recrée les sessions avec de **nouveaux handlers** — le jeu repart de zéro.
+
+**Pourquoi ce choix** : pacpam est une bibliothèque de transport et de synchronisation. La sémantique de l'état applicatif (peut-on reprendre ? faut-il un rollback ? l'état est-il encore valide ?) dépend entièrement de l'application. Pacpam ne fait aucune hypothèse.
+
+**Pattern : reprise d'état après reconnexion**
+
+L'application peut préserver l'état en le stockant dans le controller (ou toute couche persistante au-dessus du handler) :
+
+```
+Connexion               Déconnexion              Reconnexion
+    │                        │                        │
+    ▼                        ▼                        ▼
+handler.onStart(ctrl)   handler.onEnd()          handler.onStart(ctrl)
+    │                     │ sauver état              │ restaurer état
+    ▼                     ▼                          ▼
+  jeu en cours      état dans le controller     jeu reprend
+```
+
+**Exemple — jeu temps réel (centralisé, fps > 0) :**
+
+```js
+class GameController {
+  #savedState = null
+
+  #makeHandler() {
+    return {
+      onStart: (ctrl) => {
+        this.#ctrl = ctrl
+        if (this.#savedState) {
+          // Restaurer l'état sauvegardé
+          this.#gameState = this.#savedState
+          this.#savedState = null
+        } else {
+          // Première connexion : état initial
+          this.#gameState = createInitialState()
+        }
+      },
+
+      onEnd: () => {
+        // Sauvegarder l'état avant destruction du handler
+        this.#savedState = structuredClone(this.#gameState)
+      },
+
+      getLocalState: () => this.#gameState,
+
+      processAction: (action) => {
+        applyAction(this.#gameState, action)
+      }
+    }
+  }
+}
+```
+
+Le guest n'a rien de particulier à faire : dès que l'hôte envoie le premier `fullState` après reconnexion, `applyRemoteState(state)` synchronise le guest sur l'état restauré.
+
+**Exemple — jeu par tour (centralisé, fps = 0) :**
+
+Même pattern. La différence est que l'hôte appelle `ctrl.broadcastState()` explicitement après chaque coup, et que le guest envoie ses coups via `ctrl.sendAction()`. La reconnexion reprend au dernier état connu :
+
+```js
+onEnd: () => {
+  // Sauvegarder le plateau, les scores, le joueur courant
+  this.#savedState = {
+    board: structuredClone(this.#board),
+    scores: { ...this.#scores },
+    currentPlayer: this.#currentPlayer
+  }
+}
+```
+
+**Exemple — chat (indépendant, fps = 0) :**
+
+Le chat n'a pas d'état partagé à restaurer. Les messages sont dans le DOM. Après reconnexion, les nouveaux messages s'ajoutent à la suite. Aucune sauvegarde nécessaire.
+
+**Cas limites à considérer :**
+
+| Situation | Recommandation |
+|-----------|----------------|
+| Déconnexion pendant une animation | Figer l'état au moment de `onEnd()`, reprendre depuis cet état |
+| État devenu invalide (timeout de partie) | Vérifier la validité dans `onStart()`, réinitialiser si nécessaire |
+| Un seul pair se reconnecte (l'autre a quitté) | Détecter via `onStateChange` → `DISCONNECTED` avec `detail.layer2Tid === 'c25'` (pair parti). Proposer « Retour » plutôt que « Reconnecter » |
+| Reconnexions multiples | Chaque `onEnd()` écrase `#savedState`. Pas de pile d'états — seul le dernier compte |
+| Données sensibles en mémoire | `#savedState` reste en mémoire côté client. Si la sécurité l'exige, chiffrer ou purger après un délai |
+
+**Résumé** : pacpam fournit le mécanisme de reconnexion (transport + re-création de sessions). La persistance de l'état est une responsabilité applicative, implémentée via le pattern `onEnd()` → sauvegarder / `onStart()` → restaurer.
+
 #### Latence (RTT)
 
 P2PSync expose la latence du dernier ping/pong mesuré par la couche 2 :

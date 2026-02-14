@@ -116,7 +116,7 @@ function renderLinks(container) {
   if (guards.length) {
     const h = document.createElement('div');
     h.style.cssText = 'color:#ff9800; margin-top:4px;';
-    h.textContent = 'Guards (consulte le CB avant transition)';
+    h.textContent = 'Gardes (consulte le CB avant transition)';
     section.appendChild(h);
     for (const g of guards) {
       const row = document.createElement('div');
@@ -130,7 +130,7 @@ function renderLinks(container) {
   if (emits.length) {
     const h = document.createElement('div');
     h.style.cssText = 'color:#4caf50; margin-top:4px;';
-    h.textContent = 'Emits (notifie le CB après transition)';
+    h.textContent = 'Signaux (notifie le CB après transition)';
     section.appendChild(h);
     for (const e of emits) {
       const row = document.createElement('div');

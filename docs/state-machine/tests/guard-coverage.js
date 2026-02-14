@@ -5,7 +5,7 @@ import { GUARD_TRANSITIONS, byKey, GUARD_STATE_ORDER } from './guard-transition-
 const results = new Map();
 
 export default {
-  name: 'Guard présence',
+  name: 'Présence d'un Guard',
   run: guardCoverage,
   render(container) {
     renderTimeline(container);

@@ -2,19 +2,54 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Machines d'états — Pacpam</title>
+  <title>Machines à états — Pacpam</title>
   <style>
-    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; }
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; margin: 0; }
     h1 { color: #7fdbca; margin-bottom: 16px; }
-    h2 { color: #c792ea; font-size: 14px; margin: 24px 0 8px; text-transform: uppercase; }
-    button { background: #0f3460; border: 1px solid #555; color: #e0e0e0; padding: 4px 12px;
-             cursor: pointer; font-family: monospace; font-size: 12px; margin-right: 6px; }
-    button:hover { background: #1a4f8a; }
-    .mermaid { background: #fff; padding: 12px; border-radius: 4px; margin-bottom: 16px; }
+
+    /* --- Onglets --- */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      border-bottom: 2px solid #333;
+      margin-bottom: 0;
+    }
+    .tab {
+      background: #0f1a30;
+      border: 1px solid #333;
+      border-bottom: none;
+      color: #888;
+      padding: 8px 20px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 13px;
+      border-radius: 6px 6px 0 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab:hover { background: #1a2a4a; color: #bbb; }
+    .tab.active {
+      background: #1a1a2e;
+      color: #7fdbca;
+      border-color: #555;
+      border-bottom: 2px solid #1a1a2e;
+      margin-bottom: -2px;
+    }
+
+    /* --- Panneaux --- */
+    .panel {
+      padding: 16px 0;
+    }
+    .panel.ready:not(.active) { display: none; }
+
+    h2 { color: #c792ea; font-size: 14px; margin: 0 0 8px; text-transform: uppercase; }
+    button.export { background: #0f3460; border: 1px solid #555; color: #e0e0e0; padding: 4px 12px;
+             cursor: pointer; font-family: monospace; font-size: 12px; margin-bottom: 8px; }
+    button.export:hover { background: #1a4f8a; }
+    .mermaid { background: #1a1a2e; padding: 12px; border-radius: 4px; }
   </style>
   <script type="module">
     import mermaid from 'https://esm.sh/mermaid@11.12.2';
-    import { toFlowchartMulti } from './to-flowchart.js';
+    import { toFlowchart, toFlowchartMulti } from './to-flowchart.js';
     import { connectionStates, initial as connInitial } from '../../src/core/connection-states.js';
     import { circuitBreakerStates, initial as cbInitial } from '../../src/security/circuit-breaker-states.js';
     import { p2pSyncStates, p2pSyncInitial } from '../../src/sync/p2p-sync-states.js';
@@ -23,6 +58,7 @@
 
     mermaid.initialize({
       startOnLoad: false,
+      theme: 'dark',
       flowchart: { nodeSpacing: 80, rankSpacing: 60 }
     });
 
@@ -33,13 +69,13 @@
         { id: 'cb', states: circuitBreakerStates, initial: cbInitial, label: 'Disjoncteur' }
       ], { direction: 'LR' });
 
-    // Couche 3 — P2PSync + Guard + Session
-    document.getElementById('diagram-l3').textContent =
-      toFlowchartMulti([
-        { id: 'sync', states: p2pSyncStates, initial: p2pSyncInitial, label: 'P2PSync' },
-        { id: 'guard', states: guardStates, initial: guardInitial, label: 'Guard présence' },
-        { id: 'sess', states: sessionStates, initial: sessionInitial, label: 'Session' }
-      ], { direction: 'LR' });
+    // Couche 3 — 3 diagrammes empilés
+    document.getElementById('diagram-l3-sync').textContent =
+      toFlowchart(p2pSyncStates, { initial: p2pSyncInitial, direction: 'LR' });
+    document.getElementById('diagram-l3-guard').textContent =
+      toFlowchart(guardStates, { initial: guardInitial, direction: 'LR' });
+    document.getElementById('diagram-l3-sess').textContent =
+      toFlowchart(sessionStates, { initial: sessionInitial, direction: 'LR' });
 
     // Vue transversale — Connexion + P2PSync (cross-links)
     document.getElementById('diagram-cross').textContent =
@@ -48,7 +84,20 @@
         { id: 'sync', states: p2pSyncStates, initial: p2pSyncInitial, label: 'P2PSync' }
       ], { direction: 'LR' });
 
-    mermaid.run();
+    await mermaid.run();
+
+    // Cacher les panels inactifs après rendu Mermaid (display:none empêche le rendu)
+    for (const p of document.querySelectorAll('.panel')) p.classList.add('ready');
+
+    // --- Navigation par onglets ---
+    for (const tab of document.querySelectorAll('.tab')) {
+      tab.addEventListener('click', () => {
+        document.querySelector('.tab.active').classList.remove('active');
+        document.querySelector('.panel.active').classList.remove('active');
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.panel).classList.add('active');
+      });
+    }
 
     // Export SVG
     function exportDiagram(selector, suffix) {
@@ -68,23 +117,37 @@
     }
 
     document.getElementById('export-l2').addEventListener('click', exportDiagram('#diagram-l2', 'connexion'));
-    document.getElementById('export-l3').addEventListener('click', exportDiagram('#diagram-l3', 'sync'));
     document.getElementById('export-cross').addEventListener('click', exportDiagram('#diagram-cross', 'cross'));
   </script>
 </head>
 <body>
-  <h1>Machines d'états — Pacpam</h1>
+  <h1>Machines à états — Pacpam</h1>
 
-  <h2>Couche 2 — Connexion</h2>
-  <button id="export-l2">Exporter SVG</button>
-  <pre class="mermaid" id="diagram-l2"></pre>
+  <nav class="tabs">
+    <div class="tab active" data-panel="panel-l2">Couche 2 — Connexion</div>
+    <div class="tab" data-panel="panel-l3">Couche 3 — Synchronisation</div>
+    <div class="tab" data-panel="panel-cross">Vue transversale</div>
+  </nav>
 
-  <h2>Couche 3 — Synchronisation P2P</h2>
-  <button id="export-l3">Exporter SVG</button>
-  <pre class="mermaid" id="diagram-l3"></pre>
+  <div id="panel-l2" class="panel active">
+    <h2>Couche 2 — Connexion + Disjoncteur</h2>
+    <button id="export-l2" class="export">Exporter SVG</button>
+    <pre class="mermaid" id="diagram-l2"></pre>
+  </div>
 
-  <h2>Vue transversale — Connexion ↔ P2PSync</h2>
-  <button id="export-cross">Exporter SVG</button>
-  <pre class="mermaid" id="diagram-cross"></pre>
+  <div id="panel-l3" class="panel">
+    <h2>Couche 3 — P2PSync</h2>
+    <pre class="mermaid" id="diagram-l3-sync"></pre>
+    <h2>Couche 3 — Présence d'un Guard</h2>
+    <pre class="mermaid" id="diagram-l3-guard"></pre>
+    <h2>Couche 3 — Session</h2>
+    <pre class="mermaid" id="diagram-l3-sess"></pre>
+  </div>
+
+  <div id="panel-cross" class="panel">
+    <h2>Vue transversale — Connexion ↔ P2PSync</h2>
+    <button id="export-cross" class="export">Exporter SVG</button>
+    <pre class="mermaid" id="diagram-cross"></pre>
+  </div>
 </body>
 </html>

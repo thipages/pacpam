@@ -6,7 +6,7 @@ import { render as renderGraph } from './sm-graph.js';
 const results = new Map();
 
 export default {
-  name: 'Machine \u00e0 \u00e9tats connexion',
+  name: 'Machine à états — Connexion',
   run: smCoverage,
   render(container) {
     renderGraph(container);

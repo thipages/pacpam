@@ -480,6 +480,12 @@ export class P2PSync {
       return;
     }
 
+    if (toL2 === 'CONNECTED' && syncState === 'DISCONNECTED') {
+      this.sm.send('RECONNECT');
+      this.sm.send('TRANSPORT_CONNECTED');
+      return;
+    }
+
     if (fromL2 === 'CONNECTED' && toL2 !== 'CONNECTED' && syncState === 'CONNECTED') {
       this.sm.send('TRANSPORT_LOST');
       if (toL2 === 'IDLE') this.sm.send('RESET');

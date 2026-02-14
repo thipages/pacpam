@@ -1,6 +1,6 @@
 # @thipages/pacpam
 
-![version](https://img.shields.io/badge/version-0.9.1-blue) ![tests](https://img.shields.io/badge/tests-81%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-12-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
+![version](https://img.shields.io/badge/version-0.10.1-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
 
 Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation.
 
@@ -12,39 +12,63 @@ npm install @thipages/pacpam
 
 ## Usage
 
+### P2PSync (recommandé)
+
+Façade haut niveau avec sessions multiplexées, guard de présence et reconnexion.
+
 ```javascript
-import { loadLocale, NetworkManager } from '@thipages/pacpam';
+import { NetworkManager, PeerTransport, P2PSync } from '@thipages/pacpam';
 
-await loadLocale();
+const network = new NetworkManager();
+const transport = new PeerTransport(network);
+const sync = new P2PSync(transport);
 
-const network = new NetworkManager({ debug: true });
+sync.onStateChange = (state, detail) => console.log('État:', state);
+sync.onSessionCreate = (id, config) => myHandler; // guest : retourner un handler
+
+transport.init('P01', 'mon-app-id');
+```
+
+### NetworkManager (couche 2, avancé)
+
+Accès direct à la machine à états de connexion, sans sessions.
+
+```javascript
+import { NetworkManager } from '@thipages/pacpam';
+
+const network = new NetworkManager();
 network.onIdReady = (id) => console.log('Mon ID:', id);
 network.onConnected = () => console.log('Connecté');
 network.onData = (data) => console.log('Reçu:', data);
-network.onError = (err) => console.error(err.message);
 
-network.init('P01', 'a1b2c3d4e5f6');  // pseudo : 3-10 chars, A-Z 0-9 _ -
+network.init('P01', 'mon-app-id');
 ```
 
 ### Sans bundler (ES modules natifs)
 
 ```html
 <script type="importmap">
-{ "imports": { "@thipages/pacpam": "https://esm.sh/@thipages/pacpam@0.9.1" } }
+{ "imports": { "@thipages/pacpam": "https://esm.sh/@thipages/pacpam@0.10.1" } }
 </script>
 <script type="module">
-  import { loadLocale, NetworkManager } from '@thipages/pacpam';
+  import { PeerTransport, P2PSync, NetworkManager } from '@thipages/pacpam';
 </script>
 ```
 
-## Démo
+## Démos
 
-[Chat Pacpam](https://thipages.github.io/pacpam/pages/) — ouvrir dans deux onglets pour tester.
+[Index des démos](https://thipages.github.io/pacpam/pages/) — ouvrir dans deux onglets pour tester.
+
+- **Chat** — mode independent, fps=0 (messages à la demande)
+- **Pong** — mode centralized, 30fps (temps réel, hôte autoritaire)
 
 ## Documentation
 
+- [Architecture](docs/architecture.md)
 - [Référence API](docs/api.md)
-- [Diagramme des machines à états](docs/state-machine/index.html)
+- [Migration v0.9 → v0.10](docs/migration-0.9-0.10.md)
+- [Machines à états (visualiseur)](docs/state-machine/index.html)
+- [Changelog](docs/changelog.md)
 
 ## Sécurité
 

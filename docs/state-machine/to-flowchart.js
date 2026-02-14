@@ -261,7 +261,7 @@ export function toFlowchartMulti(machines, options = {}) {
   // Legende contextuelle
   const legendItems = [];
   if (totalForwardEdges > 0) legendItems.push('━━ = chemin naturel');
-  if (hasManual) legendItems.push('<font color="#e67e22">━━</font> = manual (dev)');
+  if (hasManual) legendItems.push('<font color="#e67e22">━━</font> = manuel (dev)');
   if (hasSelfLoop) legendItems.push('↻ = self-loop');
   if (hasActionLabel) legendItems.push('<font color="#9b59b6">━━</font> / = action interne');
   if (crossLinks.size > 0) legendItems.push('-·-·- = cross-link');
@@ -536,7 +536,7 @@ export function toFlowchart(states, options = {}) {
   // Legende contextuelle
   const legendItems = [];
   if (forwardEdges.size > 0) legendItems.push('━━ = chemin naturel');
-  if (hasManual) legendItems.push('<font color="#e67e22">━━</font> = manual (dev)');
+  if (hasManual) legendItems.push('<font color="#e67e22">━━</font> = manuel (dev)');
   if (hasSelfLoop) legendItems.push('↻ = self-loop');
   if (hasActionLabel) legendItems.push('<font color="#9b59b6">━━</font> / = action interne');
 
