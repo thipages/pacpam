@@ -44,6 +44,10 @@ Chaque point sera évalué et décidé individuellement avant implémentation.
 
 - [ ] **Auth via P2PSync** : `authSuccess()`, `authFailed()` et `onAuthRequired` doivent passer par P2PSync (passthrough vers transport). Actuellement les démos appellent ces méthodes directement sur `transport`, contournant la façade unique. Ajouter les 4 délégations dans `P2PSync` et migrer les démos (`chat-controller`, `pong-controller`, `peer-instance`) pour n'utiliser que `sync`.
 - [ ] **Instanciation simplifiée** : permettre de créer P2PSync en un seul appel au lieu de trois (`NetworkManager` → `PeerTransport` → `P2PSync`). P2PSync crée internalement le transport et le network, l'application n'a plus besoin de connaître ces couches.
+- [ ] **Filtrage messages internes dans onData** : les messages `action`, `localState` et `_ctrl` sont des messages internes de P2PSync traités par le système de sessions/contrôle, mais arrivent aussi dans `transport.onData`. Les ignorer silencieusement au lieu de déclencher un warning.
+- [ ] **Rate limit `action` trop bas** : la limite actuelle est 10/sec (`rate-limiter.js`) alors qu'un jeu realtime à 30 fps envoie des actions à chaque frame. Relever à au moins 35/sec pour supporter les sessions haute fréquence. Problème aggravé : une fois la limite atteinte, le peer est bloqué pour spam et **tous** les messages suivants (`localState`, `pong`, etc.) sont rejetés avec un warning chacun, provoquant un flood de logs dans la console.
+- [ ] **Throttle des warnings rate limit** : quand un peer est bloqué ou dépasse la limite, chaque message rejeté génère un `console.warn` individuel, ce qui flood la console. Throttler les warnings (un seul log par type et par fenêtre de temps, puis un résumé « N messages supprimés »).
+- [ ] **Auto-pause des sessions quand le pair est absent** : quand le guard passe en OPEN (peer absent), suspendre automatiquement le broadcast des sessions (arrêt des `setInterval` sync). Reprise automatique quand le guard revient en HALF_OPEN (peer de retour). Économise CPU/réseau sans code applicatif.
 
 ### Manques couche 3 (audit)
 

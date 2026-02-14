@@ -281,7 +281,12 @@ Une session est caractérisée par son **mode** et son **fps**.
 | `0` | **Discret seul** — envois à la demande uniquement |
 | `> 0` | **Discret + continu** — la boucle de synchronisation tourne à la fréquence donnée, ET les envois ponctuels restent possibles |
 
-Une session supporte **toujours** les envois discrets. Le `fps` contrôle uniquement si une boucle continue de synchronisation d'état tourne en plus. Le fps est une **propriété de la session**, pas du pair : les deux pairs tournent au même fps. Seul l'hôte peut le changer via `setFps(n)` (niveau administratif), ce qui envoie un `_ctrl: 'sessionSetFps'` pour synchroniser le guest :
+Une session supporte **toujours** les envois discrets. Le `fps` contrôle uniquement si une boucle continue de synchronisation d'état tourne en plus. Le fps est une **propriété de la session**, pas du pair : les deux pairs tournent au même fps. Seul l'hôte peut le changer via `setFps(n)` (niveau administratif), ce qui envoie un `_ctrl: 'sessionSetFps'` pour synchroniser le guest.
+
+**Implémentation** : la boucle continue utilise `setInterval` (et non `requestAnimationFrame`). Ce choix est délibéré :
+- La synchronisation réseau n'est pas du rendu — `rAF` se suspend quand l'onglet est en arrière-plan, ce qui casserait la sync.
+- `setInterval` permet des fréquences arbitraires (0.5 fps pour la présence, 30 fps pour un jeu), indépendamment du taux de rafraîchissement écran.
+- L'imprécision de `setInterval` (1-4 ms en onglet actif) est négligeable face à la latence WebRTC (20-100 ms). Le rendu côté client utilise `rAF` de toute façon — la boucle de sync et la boucle de rendu sont découplées.
 
 ```
 fps = 0   →  chat, tour par tour (discret seul)
