@@ -29,21 +29,6 @@ sync.onSessionCreate = (id, config) => myHandler; // guest : retourner un handle
 transport.init('P01', 'mon-app-id');
 ```
 
-### NetworkManager (couche 2, avancé)
-
-Accès direct à la machine à états de connexion, sans sessions.
-
-```javascript
-import { NetworkManager } from '@thipages/pacpam';
-
-const network = new NetworkManager();
-network.onIdReady = (id) => console.log('Mon ID:', id);
-network.onConnected = () => console.log('Connecté');
-network.onData = (data) => console.log('Reçu:', data);
-
-network.init('P01', 'mon-app-id');
-```
-
 ### Sans bundler (ES modules natifs)
 
 ```html
@@ -59,8 +44,8 @@ network.init('P01', 'mon-app-id');
 
 [Index des démos](https://thipages.github.io/pacpam/pages/) — ouvrir dans deux onglets pour tester.
 
-- **Chat** — mode independent, fps=0 (messages à la demande)
-- **Pong** — mode centralized, 30fps (temps réel, hôte autoritaire)
+- **Chat** — mode indépendant, fps=0 (messages à la demande)
+- **Pong** — mode centralisé, 30fps (temps réel, hôte autoritaire)
 
 ## Documentation
 

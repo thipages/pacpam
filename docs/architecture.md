@@ -1018,6 +1018,8 @@ Transport {
     isHost                       // Rôle (lecture seule)
     state                        // État SM couche 2 (lecture seule)
     remotePeerId                 // PeerId du pair distant connecté, ou null (lecture seule)
+    authSuccess()                // Signale que l'authentification a réussi
+    authFailed()                 // Signale que l'authentification a échoué
     circuitBreakerInfo(peerId?)  // Info CB : { state, nextAttemptTime } ou null
 }
 ```
