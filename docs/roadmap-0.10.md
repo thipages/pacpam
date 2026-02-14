@@ -43,6 +43,7 @@ Chaque point sera évalué et décidé individuellement avant implémentation.
 ### Priorité haute
 
 - [ ] **Auth via P2PSync** : `authSuccess()`, `authFailed()` et `onAuthRequired` doivent passer par P2PSync (passthrough vers transport). Actuellement les démos appellent ces méthodes directement sur `transport`, contournant la façade unique. Ajouter les 4 délégations dans `P2PSync` et migrer les démos (`chat-controller`, `pong-controller`, `peer-instance`) pour n'utiliser que `sync`.
+- [ ] **Instanciation simplifiée** : permettre de créer P2PSync en un seul appel au lieu de trois (`NetworkManager` → `PeerTransport` → `P2PSync`). P2PSync crée internalement le transport et le network, l'application n'a plus besoin de connaître ces couches.
 
 ### Manques couche 3 (audit)
 
