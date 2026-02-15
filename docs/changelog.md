@@ -1,5 +1,10 @@
 # Changelog — pacpam
 
+## v0.11.2 — 2026-02-15
+
+- Réorganisation docs : migrations dans `docs/migrations/`, state-machine déplacé vers `pages/` (accessible sur GitHub Pages)
+- Carte « Machines à états » ajoutée dans l'index des démos
+
 ## v0.11.1 — 2026-02-15
 
 - Page index démos : checkbox « mode test » intégrée dans les cartes Chat et Pong (ajoute `?test` au lien)

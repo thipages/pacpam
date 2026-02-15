@@ -1,6 +1,6 @@
 # @thipages/pacpam
 
-![version](https://img.shields.io/badge/version-0.11.1-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
+![version](https://img.shields.io/badge/version-0.11.2-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
 
 Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation.
 
@@ -50,7 +50,7 @@ sync.init('P01', 'mon-app-id');
 - [Architecture](docs/architecture.md)
 - [Référence API](docs/api.md)
 - [Guides de migration](docs/migrations/)
-- [Machines à états (visualiseur)](pages/state-machine/index.html)
+- [Machines à états (outil de visualisation)](https://thipages.github.io/pacpam/pages/state-machine/)
 - [Changelog](docs/changelog.md)
 
 ## Sécurité
