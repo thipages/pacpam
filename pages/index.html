@@ -19,7 +19,20 @@
         }
         h1 { font-size: 1.4rem; margin-bottom: 8px; }
         p { font-size: 0.85rem; color: #777; margin-bottom: 32px; }
-        .links { display: flex; gap: 16px; }
+        .links {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .row { display: flex; gap: 16px; }
+        .section-label {
+            font-size: 0.7rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 28px 0 10px;
+        }
+        .section-label:first-child { margin-top: 0; }
         .card {
             background: #1a1a2e;
             border: 1px solid #333;
@@ -38,53 +51,55 @@
             color: #555;
             margin-top: 4px;
         }
-        .card .test-toggle {
+        .test-toggle {
             display: flex;
             align-items: center;
             gap: 4px;
             font-size: 0.7rem;
             color: #555;
             margin-top: 10px;
-            padding-top: 8px;
-            border-top: 1px solid #282840;
             cursor: pointer;
         }
-        .card .test-toggle input { cursor: pointer; }
+        .test-toggle input { cursor: pointer; }
     </style>
 </head>
 <body>
     <h1><a href="https://github.com/thipages/pacpam" style="color:inherit;text-decoration:none">pacpam</a></h1>
     <p>Bibliothèque P2P WebRTC — <a href="https://github.com/thipages/pacpam" style="color:#555;font-size:0.8rem">GitHub</a></p>
     <nav class="links">
-        <div class="card">
-            <a href="chat/">Chat</a>
-            <div class="desc">Couche 3 — P2PSync + Guard + Session</div>
-            <label class="test-toggle">
-                <input type="checkbox" data-test-cb="chat/"> mode test
-            </label>
+        <div class="section-label">Démos</div>
+        <div class="row">
+            <div class="card">
+                <a data-demo href="chat/">Chat</a>
+                <div class="desc">Couche 3 — P2PSync + Guard + Session</div>
+            </div>
+            <div class="card">
+                <a data-demo href="pong/">Pong</a>
+                <div class="desc">Couche 3 — Centralisé, 30fps</div>
+            </div>
         </div>
-        <div class="card">
-            <a href="pong/">Pong</a>
-            <div class="desc">Couche 3 — Centralisé, 30fps</div>
-            <label class="test-toggle">
-                <input type="checkbox" data-test-cb="pong/"> mode test
-            </label>
-        </div>
-        <div class="card">
-            <a href="tests/">Tests P2PSync</a>
-            <div class="desc">Couche 3 — sessions multiplexées</div>
-        </div>
-        <div class="card">
-            <a href="state-machine/">Machines à états</a>
-            <div class="desc">Outil de visualisation des SM</div>
+        <label class="test-toggle">
+            <input type="checkbox" id="testModeCb"> mode test
+        </label>
+        <div class="section-label">Outils</div>
+        <div class="row">
+            <div class="card">
+                <a href="tests/">Tests P2PSync</a>
+                <div class="desc">Couche 3 — sessions multiplexées</div>
+            </div>
+            <div class="card">
+                <a href="state-machine/">Machines à états</a>
+                <div class="desc">Visualisation des machines à états</div>
+            </div>
         </div>
     </nav>
     <script>
-        document.querySelectorAll('[data-test-cb]').forEach(cb => {
-            cb.addEventListener('change', () => {
-                const base = cb.dataset.testCb;
-                const a = cb.closest('.card').querySelector('a');
-                a.href = base + (cb.checked ? '?test' : '');
+        const testCb = document.getElementById('testModeCb');
+        const demoLinks = document.querySelectorAll('a[data-demo]');
+        const bases = [...demoLinks].map(a => a.getAttribute('href'));
+        testCb.addEventListener('change', () => {
+            demoLinks.forEach((a, i) => {
+                a.href = bases[i] + (testCb.checked ? '?test' : '');
             });
         });
     </script>

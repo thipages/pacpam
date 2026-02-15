@@ -1,6 +1,6 @@
 # @thipages/pacpam
 
-![version](https://img.shields.io/badge/version-0.11.2-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
+![version](https://img.shields.io/badge/version-0.11.3-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
 
 Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation.
 
@@ -44,6 +44,8 @@ sync.init('P01', 'mon-app-id');
 
 - **Chat** — mode indépendant, fps=0 (messages à la demande)
 - **Pong** — mode centralisé, 30fps (temps réel, hôte autoritaire)
+
+[Installer son propre chat](docs/install-chat.md)
 
 ## Documentation
 

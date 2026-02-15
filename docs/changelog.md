@@ -1,5 +1,11 @@
 # Changelog — pacpam
 
+## v0.11.3 — 2026-02-15
+
+- Guide d'installation chat standalone (`docs/install-chat.md`) : fichier HTML autonome prêt à copier-coller, champ salon avec mémorisation localStorage
+- Index des pages : séparation visuelle Démos / Outils, checkbox mode test globale
+- README : lien vers le guide d'installation chat
+
 ## v0.11.2 — 2026-02-15
 
 - Réorganisation docs : migrations dans `docs/migrations/`, state-machine déplacé vers `pages/` (accessible sur GitHub Pages)
