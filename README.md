@@ -49,9 +49,8 @@ sync.init('P01', 'mon-app-id');
 
 - [Architecture](docs/architecture.md)
 - [Référence API](docs/api.md)
-- [Migration v0.10 → v0.11](docs/migration-0.10-0.11.md)
-- [Migration v0.9 → v0.10](docs/migration-0.9-0.10.md)
-- [Machines à états (visualiseur)](docs/state-machine/index.html)
+- [Guides de migration](docs/migrations/)
+- [Machines à états (visualiseur)](pages/state-machine/index.html)
 - [Changelog](docs/changelog.md)
 
 ## Sécurité

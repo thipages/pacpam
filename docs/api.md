@@ -54,7 +54,7 @@ const network = new NetworkManager({ debug: false });
 IDLE → INITIALIZING → READY → CONNECTING → AUTHENTICATING → CONNECTED
 ```
 
-Voir le [diagramme interactif](state-machine/index.html).
+Voir le [diagramme interactif](../pages/state-machine/index.html).
 
 ---
 
