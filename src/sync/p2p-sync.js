@@ -15,6 +15,8 @@ import { StateRunner } from '../core/state-runner.js';
 import { p2pSyncStates, p2pSyncInitial } from './p2p-sync-states.js';
 import { guardStates, guardInitial } from './guard-states.js';
 import { Session, SessionCtrl } from './session.js';
+import { NetworkManager } from '../core/network.js';
+import { PeerTransport } from './transport.js';
 
 const DEFAULT_GUARD_TIMEOUT = 5000;
 
@@ -27,7 +29,18 @@ export class P2PSync {
   #lastL2Event = null;
   #lastPeerId = null;
 
-  constructor(transport, options = {}) {
+  constructor(transportOrOptions, options = {}) {
+    let transport;
+    if (transportOrOptions && typeof transportOrOptions.send === 'function') {
+      // Mode legacy : new P2PSync(transport, options)
+      transport = transportOrOptions;
+    } else {
+      // Mode simplifié : new P2PSync({ network: {...}, guardTimeout, ... })
+      options = transportOrOptions ?? {};
+      const networkOpts = options.network ?? {};
+      const network = new NetworkManager(networkOpts);
+      transport = new PeerTransport(network);
+    }
     this.transport = transport;
     this.sm = new StateRunner(p2pSyncStates, p2pSyncInitial);
     this.#guardTimeoutMs = options.guardTimeout ?? DEFAULT_GUARD_TIMEOUT;
@@ -425,10 +438,12 @@ export class P2PSync {
     this.#guard.onTransition = (from, to, event) => {
       this.onGuardChange?.(to, { from, to, event });
       if (to === 'OPEN') {
+        this.#pauseAllSessions();
         this.onPeerAbsent?.();
         this.#notifyGuardToSessions('onPeerAbsent');
       }
       if (from === 'OPEN' && to === 'HALF_OPEN') {
+        this.#resumeAllSessions();
         this.onPeerBack?.();
         this.#notifyGuardToSessions('onPeerBack');
       }
@@ -459,6 +474,20 @@ export class P2PSync {
     if (!this.#guard) return;
     this.#guard.send('DATA_RECEIVED');
     this.#resetGuardTimer();
+  }
+
+  #pauseAllSessions() {
+    for (const session of this.sessions.values()) {
+      this.#stopSessionSync(session);
+    }
+  }
+
+  #resumeAllSessions() {
+    for (const session of this.sessions.values()) {
+      if (session.state === 'CONNECTED' && session.fps > 0) {
+        this.#startSessionSync(session);
+      }
+    }
   }
 
   #notifyGuardToSessions(method) {
@@ -511,4 +540,36 @@ export class P2PSync {
     const p = this.sessions.get('_presence');
     return p ? p.fps === 0 : false;
   }
+
+  // --- Passthroughs transport ---
+
+  init(...args)       { this.transport.init(...args); }
+  connect(peerId)     { this.transport.connect(peerId); }
+  disconnect()        { this.transport.disconnect(); }
+  send(data)          { return this.transport.send(data); }
+
+  authSuccess()       { this.transport.authSuccess(); }
+  authFailed()        { this.transport.authFailed(); }
+
+  set onIdReady(cb)       { this.transport.onIdReady = cb; }
+  get onIdReady()         { return this.transport.onIdReady; }
+
+  set onAuthRequired(cb)  { this.transport.onAuthRequired = cb; }
+  get onAuthRequired()    { return this.transport.onAuthRequired; }
+
+  set onConnected(cb)     { this.transport.onConnected = cb; }
+  get onConnected()       { return this.transport.onConnected; }
+
+  set onDisconnected(cb)  { this.transport.onDisconnected = cb; }
+  get onDisconnected()    { return this.transport.onDisconnected; }
+
+  set onError(cb)         { this.transport.onError = cb; }
+  get onError()           { return this.transport.onError; }
+
+  set onData(cb)          { this.transport.onData = cb; }
+  get onData()            { return this.transport.onData; }
+
+  get myId()              { return this.transport.myId; }
+  get myPseudo()          { return this.transport.myPseudo; }
+  get remotePeerId()      { return this.transport.remotePeerId; }
 }

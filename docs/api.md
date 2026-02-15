@@ -20,12 +20,14 @@ const network = new NetworkManager({ debug: false });
 | `options.authTimeout` | `number` | `5000` | Timeout d'authentification (ms) |
 | `options.pingInterval` | `number` | `3000` | Intervalle entre les pings keepalive (ms) |
 | `options.pongTimeout` | `number` | `10000` | Délai sans pong avant déconnexion (ms) |
+| `options.peerOptions` | `object` | `{}` | Options passées au constructeur PeerJS (`host`, `port`, `path`, `secure`, etc.) |
 
 **Méthodes**
 
 | Méthode | Retour | Description |
 |---------|--------|-------------|
-| `init(pseudo, appId)` | `void` | Initialise PeerJS. L'ID sera `${appId}-${pseudo}`. Le pseudo doit contenir 3 à 10 caractères parmi `A-Z`, `0-9`, `_`, `-` (insensible à la casse). |
+| `init(pseudo, appId)` | `void` | Mode legacy : initialise PeerJS. L'ID sera `${appId}-${pseudo}`. Le pseudo doit contenir 3 à 10 caractères parmi `A-Z`, `0-9`, `_`, `-` (insensible à la casse). |
+| `init(id)` | `void` | Mode libre : initialise PeerJS avec un ID opaque (≥ 16 caractères). `myPseudo` sera `null`. |
 | `connectTo(peerId)` | `Promise<void>` | Se connecte à un pair distant (circuit breaker intégré). |
 | `send(data)` | `boolean` | Envoie des données au pair connecté. |
 | `disconnect()` | `void` | Ferme la connexion et revient à l'état IDLE. |
@@ -215,16 +217,28 @@ const transport = new PeerTransport(network);
 Façade applicative de pacpam. Gère les sessions multiplexées, la présence, la reconnexion et le diagnostic.
 
 ```javascript
-import { P2PSync, PeerTransport, NetworkManager } from '@thipages/pacpam';
+import { P2PSync } from '@thipages/pacpam';
+
+// Mode simplifié (recommandé)
+const sync = new P2PSync({ network: { debug: false }, guardTimeout: 5000 });
+
+// Mode legacy (toujours supporté)
 const transport = new PeerTransport(new NetworkManager());
 const sync = new P2PSync(transport, { guardTimeout: 5000 });
 ```
 
-**Constructeur**
+**Constructeur — mode simplifié**
 
 | Param | Type | Défaut | Description |
 |-------|------|--------|-------------|
-| `transport` | `object` | *(requis)* | Objet implémentant le contrat transport. |
+| `options.network` | `object` | `{}` | Options passées au constructeur `NetworkManager` (`debug`, `peerOptions`, etc.). |
+| `options.guardTimeout` | `number` | `5000` | Délai (ms) sans données avant que le guard passe à OPEN. |
+
+**Constructeur — mode legacy**
+
+| Param | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `transport` | `object` | *(requis)* | Objet implémentant le contrat transport (doit avoir une méthode `send`). |
 | `options.guardTimeout` | `number` | `5000` | Délai (ms) sans données avant que le guard passe à OPEN. |
 
 **Méthodes**
@@ -237,6 +251,13 @@ const sync = new P2PSync(transport, { guardTimeout: 5000 });
 | `setPresence(data)` | `void` | Définit les données de présence locales. |
 | `feedGuard()` | `void` | Nourrit le guard (appelé automatiquement sur réception de données). |
 | `reconnect()` | `object` | Tente une reconnexion vers le dernier pair. Voir ci-dessous. |
+| `init(pseudo, appId)` | `void` | Passthrough transport : initialise PeerJS en mode legacy. |
+| `init(id)` | `void` | Passthrough transport : initialise PeerJS en mode ID libre (≥ 16 chars). |
+| `connect(peerId)` | `void` | Passthrough transport : initie une connexion vers un pair. |
+| `disconnect()` | `void` | Passthrough transport : ferme la connexion. |
+| `send(data)` | `boolean` | Passthrough transport : envoie des données. |
+| `authSuccess()` | `void` | Passthrough transport : signale l'authentification réussie. |
+| `authFailed()` | `void` | Passthrough transport : signale l'authentification échouée. |
 
 **Propriétés (lecture seule)**
 
@@ -249,6 +270,10 @@ const sync = new P2PSync(transport, { guardTimeout: 5000 });
 | `latency` | `number\|null` | Dernière latence mesurée (ms), ou `null`. |
 | `reconnectInfo` | `object\|null` | Info reconnexion pour l'UX. `null` si pas en DISCONNECTED. |
 | `presenceSuspended` | `boolean` | `true` si `_presence` est suspendue. |
+| `transport` | `PeerTransport` | Accès direct au transport (pour diagnostic L2). |
+| `myId` | `string` | Passthrough transport : ID PeerJS local. |
+| `myPseudo` | `string\|null` | Passthrough transport : pseudo local (ou `null` en mode ID libre). |
+| `remotePeerId` | `string\|null` | Passthrough transport : PeerId du pair distant. |
 
 **Callbacks**
 
@@ -256,14 +281,20 @@ const sync = new P2PSync(transport, { guardTimeout: 5000 });
 |----------|-----------|-------------|
 | `onStateChange` | `(state, detail) => void` | Transition P2PSync. `detail` : `{ from, to, event, layer2State, layer2Tid, layer2Event }`. |
 | `onGuardChange` | `(state, detail) => void` | Transition guard. `detail` : `{ from, to, event }`. |
-| `onPeerAbsent` | `() => void` | Guard passe à OPEN (pair absent). |
-| `onPeerBack` | `() => void` | Guard revient de OPEN (pair de retour). |
+| `onPeerAbsent` | `() => void` | Guard passe à OPEN (pair absent). Les sessions sync sont automatiquement pausées. |
+| `onPeerBack` | `() => void` | Guard revient de OPEN (pair de retour). Les sessions sync reprennent. |
 | `onSessionCreate` | `(id, config) => handler` | Guest : P2PSync demande un handler pour la session créée par l'hôte. |
 | `onSessionStateChange` | `(sessionId, state) => void` | Transition d'une session. |
 | `onPing` | `(latency) => void` | Latence mesurée (ms). |
 | `onPresence` | `(data) => void` | Données de présence du pair distant. |
 | `onPresenceSuspensionChange` | `(suspended) => void` | `_presence` suspendue/reprise. |
 | `onHandlerError` | `(sessionId, method, error) => void` | Erreur capturée dans un appel handler. |
+| `onIdReady` | `(id) => void` | Passthrough transport : PeerJS connecté, ID attribué. |
+| `onAuthRequired` | `(isHost) => void` | Passthrough transport : authentification requise. |
+| `onConnected` | `(isHost) => void` | Passthrough transport : connexion authentifiée. |
+| `onDisconnected` | `() => void` | Passthrough transport : connexion perdue. |
+| `onError` | `(error) => void` | Passthrough transport : erreur réseau. |
+| `onData` | `(data) => void` | Passthrough transport : données applicatives (exclut `_ctrl` et `_s`). |
 
 **Reconnexion manuelle**
 
@@ -387,8 +418,7 @@ import { rateLimiter, RateLimiter, MESSAGE_RATE_LIMITS } from '@thipages/pacpam'
 
 | Type | Max | Fenêtre |
 |------|-----|---------|
-| `localState` / `fullState` | 35 | 1s |
-| `action` | 10 | 1s |
+| `localState` / `fullState` / `action` | 35 | 1s |
 | `auth` | 5 | 10s |
 | `ping` / `pong` | 2 | 3s |
 | `default` | 10 | 1s |

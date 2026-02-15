@@ -1,5 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mock } from 'node:test';
+
+// Mock peerjs (dépendance navigateur) pour tous les tests
+const peerInstances = [];
+class MockPeer {
+  constructor(id) {
+    this.id = id;
+    this.destroyed = false;
+    peerInstances.push(this);
+  }
+  on() {}
+  destroy() { this.destroyed = true; }
+  reconnect() {}
+}
+mock.module('peerjs', { namedExports: { Peer: MockPeer } });
+globalThis.__mockPeerInstances = peerInstances;
 
 // Mock fetch pour Node.js (lecture fichier local)
 globalThis.fetch = async function(url) {

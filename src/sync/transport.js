@@ -26,7 +26,7 @@ export class PeerTransport {
 
   // --- Contrat transport ---
 
-  init(pseudo, appId) { this.#network.init(pseudo, appId); }
+  init(...args) { this.#network.init(...args); }
   connect(peerId)     { this.#network.connectTo(peerId); }
   disconnect()        { this.#network.disconnect(); }
 
@@ -49,7 +49,15 @@ export class PeerTransport {
   #syncNetworkOnData() {
     if (this.#dataListeners.length > 0) {
       this.#network.onData = (data) => {
-        for (const cb of this.#dataListeners) cb(data);
+        for (const cb of this.#dataListeners) {
+          if (cb._app) continue;
+          cb(data);
+        }
+        if (data._ctrl || data._s) return;
+        for (const cb of this.#dataListeners) {
+          if (!cb._app) continue;
+          cb(data);
+        }
       };
     } else {
       this.#network.onData = null;

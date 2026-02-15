@@ -1,5 +1,19 @@
 # Changelog — pacpam
 
+## v0.11.0 — 2026-02-15
+
+P2PSync comme point d'entrée unique — instanciation simplifiée, passthroughs transport, rate-limiter adapté au temps réel.
+
+- **Instanciation simplifiée** : `new P2PSync({ network: { debug: false }, guardTimeout: 5000 })` crée automatiquement NetworkManager + PeerTransport en interne. Mode legacy `new P2PSync(transport, options)` conservé
+- **Passthroughs transport** : `sync.init()`, `sync.connect()`, `sync.disconnect()`, `sync.send()`, `sync.authSuccess()`, `sync.authFailed()`, getters/setters `onIdReady`, `onAuthRequired`, `onConnected`, `onDisconnected`, `onError`, `onData`, `myId`, `myPseudo`, `remotePeerId`. L'application n'a plus besoin d'accéder au transport directement
+- **Filtrage messages internes** : les listeners app (`transport.onData`) ne reçoivent plus les messages `_ctrl` et `_s`, traités exclusivement par P2PSync. Les listeners internes (`addDataListener`) reçoivent tout
+- **Rate limit `action`** : 10/sec → 35/sec pour supporter les sessions 30fps
+- **Throttle warnings rate-limiter** : 1 log par type/peer par fenêtre de 5s au lieu d'un warning par message rejeté. Compteur de messages supprimés affiché au prochain log
+- **Auto-pause sessions** : quand le guard passe OPEN (peer absent), tous les `setInterval` de sync sont arrêtés. Reprise automatique quand le guard revient HALF_OPEN (peer de retour)
+- **ID libre** : `sync.init(id)` avec un ID opaque (≥ 16 chars) en plus du mode legacy `sync.init(pseudo, appId)`. Détection par arité
+- **Serveur PeerJS configurable** : `new P2PSync({ network: { peerOptions: { host: '...', port: 9000 } } })` ou `new NetworkManager({ peerOptions: { ... } })`
+- Migration des 3 démos (`chat-controller`, `pong-controller`, `peer-instance`) vers l'API simplifiée
+
 ## v0.10.1 — 2026-02-12
 
 Corrections couche 3 — manques identifiés par l'audit.

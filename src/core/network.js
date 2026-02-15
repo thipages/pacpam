@@ -26,9 +26,11 @@ const PEER_ERROR_EVENTS = {
 
 export class NetworkManager {
   #activeCircuitBreaker = null;
+  #peerOptions = {};
 
   constructor(options = {}) {
     this.debug = options.debug || false;
+    this.#peerOptions = options.peerOptions ?? {};
     this.connectionTimeoutMs = options.connectionTimeout ?? CONNECTION_TIMEOUT;
     this.authTimeoutMs = options.authTimeout ?? AUTH_TIMEOUT;
     this.pingIntervalMs = options.pingInterval ?? PING_INTERVAL;
@@ -155,27 +157,38 @@ export class NetworkManager {
   #log(...args) { this.debug && console.log('[Network]', ...args); }
 
   /**
-   * Initialiser PeerJS avec un pseudo et un identifiant d'application
-   * @param {string} pseudo - Le pseudo du joueur
-   * @param {string} appId - Préfixe applicatif pour éviter les collisions PeerJS
+   * Initialiser PeerJS.
+   * Mode legacy : init(pseudo, appId) — validation pseudo regex, myId = appId-pseudo
+   * Mode libre  : init(id) — validation longueur ≥ 16, myId = id, myPseudo = null
    */
-  init(pseudo, appId) {
+  init(...args) {
     if (!this.sm.is('IDLE')) return;
 
-    // Validation du pseudo : A-Z, 0-9, _, -, min 3, max 10
-    const PSEUDO_RE = /^[A-Z0-9_-]{3,10}$/i;
-    if (!pseudo || !PSEUDO_RE.test(pseudo)) {
-      this.onError?.(new Error('Pseudo invalide (3-10 caractères : lettres, chiffres, - _)'));
-      return;
+    if (args.length >= 2) {
+      // Mode legacy : (pseudo, appId)
+      const [pseudo, appId] = args;
+      const PSEUDO_RE = /^[A-Z0-9_-]{3,10}$/i;
+      if (!pseudo || !PSEUDO_RE.test(pseudo)) {
+        this.onError?.(new Error('Pseudo invalide (3-10 caractères : lettres, chiffres, - _)'));
+        return;
+      }
+      this.myId = `${appId}-${pseudo}`;
+      this.myPseudo = pseudo;
+    } else {
+      // Mode libre : (id)
+      const [id] = args;
+      if (!id || id.length < 16) {
+        this.onError?.(new Error('ID invalide (minimum 16 caractères)'));
+        return;
+      }
+      this.myId = id;
+      this.myPseudo = null;
     }
 
     this.sm.send('INIT');
 
-    this.myId = `${appId}-${pseudo}`;
-    this.myPseudo = pseudo;
-
     try {
-      this.peer = new Peer(this.myId, { debug: 1 });
+      this.peer = new Peer(this.myId, { debug: this.debug ? 2 : 0, ...this.#peerOptions });
     } catch (e) {
       console.error('[Network] Erreur création Peer:', e);
       this.sm.send('PEER_CREATION_ERROR');
@@ -325,7 +338,6 @@ export class NetworkManager {
       }
 
       if (!rateLimiter.checkLimit(data.type, peerId)) {
-        console.warn('[Security] Rate limit dépassé pour:', data.type, 'de', peerId);
         return;
       }
 

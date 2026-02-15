@@ -1,6 +1,6 @@
 # @thipages/pacpam
 
-![version](https://img.shields.io/badge/version-0.10.1-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
+![version](https://img.shields.io/badge/version-0.11.0-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![node](https://img.shields.io/badge/node-%E2%89%A520-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![modules](https://img.shields.io/badge/modules-16-informational) ![locales](https://img.shields.io/badge/locales-fr%20%7C%20en-yellow)
 
 Réseau P2P avec PeerJS — machines à états, sécurité, synchronisation.
 
@@ -17,26 +17,24 @@ npm install @thipages/pacpam
 Façade haut niveau avec sessions multiplexées, guard de présence et reconnexion.
 
 ```javascript
-import { NetworkManager, PeerTransport, P2PSync } from '@thipages/pacpam';
+import { P2PSync } from '@thipages/pacpam';
 
-const network = new NetworkManager();
-const transport = new PeerTransport(network);
-const sync = new P2PSync(transport);
+const sync = new P2PSync({ network: { debug: false } });
 
 sync.onStateChange = (state, detail) => console.log('État:', state);
 sync.onSessionCreate = (id, config) => myHandler; // guest : retourner un handler
 
-transport.init('P01', 'mon-app-id');
+sync.init('P01', 'mon-app-id');
 ```
 
 ### Sans bundler (ES modules natifs)
 
 ```html
 <script type="importmap">
-{ "imports": { "@thipages/pacpam": "https://esm.sh/@thipages/pacpam@0.10.1" } }
+{ "imports": { "@thipages/pacpam": "https://esm.sh/@thipages/pacpam@0.11.0" } }
 </script>
 <script type="module">
-  import { PeerTransport, P2PSync, NetworkManager } from '@thipages/pacpam';
+  import { P2PSync } from '@thipages/pacpam';
 </script>
 ```
 
@@ -51,6 +49,7 @@ transport.init('P01', 'mon-app-id');
 
 - [Architecture](docs/architecture.md)
 - [Référence API](docs/api.md)
+- [Migration v0.10 → v0.11](docs/migration-0.10-0.11.md)
 - [Migration v0.9 → v0.10](docs/migration-0.9-0.10.md)
 - [Machines à états (visualiseur)](docs/state-machine/index.html)
 - [Changelog](docs/changelog.md)

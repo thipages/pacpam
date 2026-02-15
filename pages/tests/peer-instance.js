@@ -12,7 +12,7 @@
  *   'id-ready' — detail: { id } — PeerJS ID prêt, l'autre instance peut s'y connecter
  */
 
-import { NetworkManager, PeerTransport, P2PSync, createAuthMessage, verifyHash } from '../../src/index.js';
+import { P2PSync, createAuthMessage, verifyHash } from '../../src/index.js';
 
 const PASSWORD = 'test';
 const APP_ID = `pacpam-test-${Date.now()}`;
@@ -116,9 +116,7 @@ export class PeerInstance extends HTMLElement {
         this.attachShadow({ mode: 'open' });
         this.shadowRoot.innerHTML = TEMPLATE;
 
-        const network = new NetworkManager({ debug: false });
-        this.transport = new PeerTransport(network);
-        this.sync = new P2PSync(this.transport);
+        this.sync = new P2PSync({ network: { debug: false } });
         this.peerId = null;
         this.remotePeerId = null;
     }
@@ -145,7 +143,6 @@ export class PeerInstance extends HTMLElement {
         const btnInvalid = $('#btn-invalid');
 
         // --- État local ---
-        const transport = this.transport;
         const sync = this.sync;
         let localCount = 0;
         let counterCtrl = null;
@@ -196,12 +193,12 @@ export class PeerInstance extends HTMLElement {
                 onStart(ctrl) {
                     counterCtrl = ctrl;
                     // Centralisé : seul le guest envoie des actions
-                    const canAct = ctrl.mode !== 'centralized' || !transport.isHost;
+                    const canAct = ctrl.mode !== 'centralized' || !sync.isHost;
                     btnInc.disabled = !canAct;
                     btnDec.disabled = !canAct;
                     // Broadcast et toggle fps : hôte uniquement
-                    btnBroadcast.disabled = !transport.isHost;
-                    btnToggleFps.disabled = !transport.isHost;
+                    btnBroadcast.disabled = !sync.isHost;
+                    btnToggleFps.disabled = !sync.isHost;
                     log(`[counter] onStart (mode=${ctrl.mode}, fps=${ctrl.fps})`);
                 },
                 onEnd() {
@@ -266,7 +263,7 @@ export class PeerInstance extends HTMLElement {
             updateSessionsList();
         };
 
-        this.transport.onConnected = (isHost) => {
+        this.sync.onConnected = (isHost) => {
             $('#role').textContent = isHost ? 'hôte' : 'invité';
             const badge = $('#role-badge');
             badge.textContent = isHost ? 'HÔTE' : 'INVITÉ';
@@ -284,7 +281,7 @@ export class PeerInstance extends HTMLElement {
 
         // --- Transport callbacks ---
 
-        this.transport.onIdReady = (id) => {
+        this.sync.onIdReady = (id) => {
             this.peerId = id;
             $('#my-id').textContent = id;
             btnConnect.disabled = false;
@@ -292,9 +289,9 @@ export class PeerInstance extends HTMLElement {
             this.dispatchEvent(new CustomEvent('id-ready', { detail: { id } }));
         };
 
-        this.transport.onError = (err) => log(`[erreur] ${err.message}`);
+        this.sync.onError = (err) => log(`[erreur] ${err.message}`);
 
-        this.transport.onDisconnected = () => {
+        this.sync.onDisconnected = () => {
             setState('disconnected', 'disconnected');
             setConnectedUI(false);
             setSessionUI(false);
@@ -303,35 +300,29 @@ export class PeerInstance extends HTMLElement {
         };
 
         // --- Auth ---
-        this.transport.onData = async (data) => {
+        this.sync.onData = async (data) => {
             if (data.type === 'auth') {
-                const authMsg = await createAuthMessage(PASSWORD, this.transport.myPseudo);
+                const authMsg = await createAuthMessage(PASSWORD, this.sync.myPseudo);
                 if (verifyHash(authMsg.hash, data.hash)) {
-                    this.transport.authSuccess();
+                    this.sync.authSuccess();
                     log('Auth OK');
                 } else {
-                    this.transport.authFailed();
+                    this.sync.authFailed();
                     log('Auth ÉCHEC');
                 }
                 return;
             }
-            // Les messages _ctrl et _s sont routés par P2PSync via addDataListener
-            // Ici on logge seulement les messages non gérés
-            if (!data._ctrl && !data._s) {
-                log(`← ${data.type} ${JSON.stringify(data.state ?? data.action ?? data.payload ?? '')}`);
-            }
+            log(`← ${data.type} ${JSON.stringify(data.state ?? data.action ?? data.payload ?? '')}`);
         };
 
-        this.transport.onPing = () => {};
-
-        this.transport.onAuthRequired = async () => {
+        this.sync.onAuthRequired = async () => {
             log('Auth…');
-            const authMsg = await createAuthMessage(PASSWORD, this.transport.myPseudo);
-            this.transport.send(authMsg);
+            const authMsg = await createAuthMessage(PASSWORD, this.sync.myPseudo);
+            this.sync.send(authMsg);
         };
 
         // --- SM transitions couche 2 ---
-        this.transport.onStateChange((state, tid, from, event) => {
+        this.sync.transport.onStateChange((state, tid, from, event) => {
             log(`L2: ${from} → ${state} [${event}] (${tid})`);
             const group = state === 'CONNECTED' ? 'connected' : state === 'IDLE' ? 'idle' : 'connecting';
             setState(`${state}`, group);
@@ -396,20 +387,20 @@ export class PeerInstance extends HTMLElement {
         btnInit.addEventListener('click', () => {
             const pseudo = $('#pseudo').value.trim();
             if (!pseudo) return;
-            this.transport.init(pseudo, APP_ID);
+            this.sync.init(pseudo, APP_ID);
             btnInit.disabled = true;
             log(`Init : ${pseudo}`);
         });
 
         btnConnect.addEventListener('click', () => {
             if (this.remotePeerId) {
-                this.transport.connect(this.remotePeerId);
+                this.sync.connect(this.remotePeerId);
                 log(`Connexion à ${this.remotePeerId}`);
             }
         });
 
         btnDisconnect.addEventListener('click', () => {
-            this.transport.disconnect();
+            this.sync.disconnect();
         });
 
         btnInc.addEventListener('click', () => {
@@ -472,11 +463,11 @@ export class PeerInstance extends HTMLElement {
 
         btnInvalid.addEventListener('click', () => {
             // 3 messages invalides pour tester la couche sécurité
-            transport.send({ type: 'hackAttempt', data: 'evil' });
+            sync.send({ type: 'hackAttempt', data: 'evil' });
             log('[security] envoyé type inconnu: hackAttempt');
-            transport.send({ type: '_ctrl', _ctrl: 'unknownCmd' });
+            sync.send({ type: '_ctrl', _ctrl: 'unknownCmd' });
             log('[security] envoyé _ctrl inconnu: unknownCmd');
-            transport.send({ type: 'fullState' });
+            sync.send({ type: 'fullState' });
             log('[security] envoyé fullState sans state');
         });
     }

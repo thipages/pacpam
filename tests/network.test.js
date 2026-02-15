@@ -1,21 +1,6 @@
-import { describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
-// Mock du module peerjs avant d'importer NetworkManager
-const peerInstances = [];
-class MockPeer {
-  constructor(id) {
-    this.id = id;
-    this.destroyed = false;
-    peerInstances.push(this);
-  }
-  on() {}
-  destroy() { this.destroyed = true; }
-}
-
-mock.module('peerjs', { namedExports: { Peer: MockPeer } });
-
-const { NetworkManager } = await import('../src/core/network.js');
+import { NetworkManager } from '../src/core/network.js';
 
 describe('NetworkManager — validation pseudo', () => {
   function initWithPseudo(pseudo) {

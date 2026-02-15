@@ -1,5 +1,3 @@
-import { NetworkManager } from '../../src/core/network.js'
-import { PeerTransport } from '../../src/sync/transport.js'
 import { P2PSync } from '../../src/sync/p2p-sync.js'
 import { createAuthMessage, verifyHash } from '../../src/core/auth.js'
 import { createPongHandler } from './pong-handler.js'
@@ -8,8 +6,6 @@ const APP_ID = 'pacpam-pong-8a2b5c1d3e7f'
 
 export class PongController {
   #listeners = {}
-  #network = null
-  #transport = null
   #sync = null
   #pongHandler = null
   #password = null
@@ -48,7 +44,7 @@ export class PongController {
   get pending() { return this.#pending }
   get myPseudo() { return this.#myPseudo }
   get remotePseudo() { return this.#remotePseudo }
-  get transportId() { return this.#transport?.myId ?? null }
+  get transportId() { return this.#sync?.myId ?? null }
   get isHost() { return this.#isHost }
 
   // --- Point unique écran (invariant 3) ---
@@ -66,19 +62,17 @@ export class PongController {
     this.#password = pwd
     this.#setScreen('IDENTITY', true)
 
-    this.#network = new NetworkManager({ debug: false })
-    this.#transport = new PeerTransport(this.#network)
+    this.#sync = new P2PSync({ network: { debug: false }, guardTimeout: 5000 })
 
-    // CRITICAL : listener inscrit AVANT new P2PSync (ordre d'appel garanti)
-    this.#transport.onStateChange((state, tid, from, event) => {
+    // Listener L2 pour diagnostic disconnectCause
+    this.#sync.transport.onStateChange((state, tid, from, event) => {
       if (from === 'CONNECTED' && state !== 'CONNECTED') {
         this.#disconnectCause = tid === 'c25' ? 'peer_left' : 'network'
       }
     })
 
-    this.#sync = new P2PSync(this.#transport, { guardTimeout: 5000 })
     this.#wireCallbacks()
-    this.#transport.init(pseudo, APP_ID)
+    this.#sync.init(pseudo, APP_ID)
     this.#disconnectCause = null
     this.#voluntaryDisconnect = false
   }
@@ -86,7 +80,7 @@ export class PongController {
   connect(remotePseudo) {
     this.#remotePseudo = remotePseudo
     this.#setScreen('PAIRING', true)
-    this.#transport.connect(`${APP_ID}-${remotePseudo}`)
+    this.#sync.connect(`${APP_ID}-${remotePseudo}`)
   }
 
   move(y) {
@@ -129,33 +123,33 @@ export class PongController {
   // --- Câblage lib ---
 
   #wireCallbacks() {
-    this.#transport.onIdReady = () => {
+    this.#sync.onIdReady = () => {
       this.#setScreen('PAIRING')
-      this.#emit('id-ready', this.#transport.myId)
+      this.#emit('id-ready', this.#sync.myId)
     }
 
-    this.#transport.onAuthRequired = async () => {
+    this.#sync.onAuthRequired = async () => {
       const authMsg = await createAuthMessage(this.#password, this.#myPseudo)
-      this.#transport.send(authMsg)
+      this.#sync.send(authMsg)
     }
 
-    this.#transport.onData = (data) => {
+    this.#sync.onData = (data) => {
       if (data.type === 'auth') {
         this.#handleAuth(data)
       }
     }
 
-    this.#transport.onConnected = () => {
-      this.#isHost = this.#transport.isHost
+    this.#sync.onConnected = () => {
+      this.#isHost = this.#sync.isHost
       if (!this.#remotePseudo) {
-        this.#remotePseudo = this.#transport.remotePeerId?.replace(`${APP_ID}-`, '') ?? null
+        this.#remotePseudo = this.#sync.remotePeerId?.replace(`${APP_ID}-`, '') ?? null
       }
       if (this.#isHost) {
         this.#createPongSession()
       }
     }
 
-    this.#transport.onError = (err) => {
+    this.#sync.onError = (err) => {
       if (this.#voluntaryDisconnect) return
       const syncState = this.#sync?.state
       if (!syncState || syncState === 'IDLE') {
@@ -219,9 +213,9 @@ export class PongController {
   async #handleAuth(data) {
     const authMsg = await createAuthMessage(this.#password, this.#myPseudo)
     if (verifyHash(authMsg.hash, data.hash)) {
-      this.#transport.authSuccess()
+      this.#sync.authSuccess()
     } else {
-      this.#transport.authFailed()
+      this.#sync.authFailed()
     }
   }
 
@@ -256,10 +250,8 @@ export class PongController {
   // --- Cleanup ---
 
   #cleanup() {
-    this.#transport?.disconnect()
+    this.#sync?.disconnect()
     this.#sync = null
-    this.#transport = null
-    this.#network = null
     this.#pongHandler = null
     this.#disconnectCause = null
     this.#isHost = false

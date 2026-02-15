@@ -6,7 +6,7 @@
 export const MESSAGE_RATE_LIMITS = {
   'localState': { max: 35, window: 1000 },    // 35/sec pour 30fps + marge
   'fullState': { max: 35, window: 1000 },    // Idem
-  'action': { max: 10, window: 1000 },       // Actions on-demand
+  'action': { max: 35, window: 1000 },       // 35/sec pour 30fps + marge
   'message': { max: 20, window: 1000 },      // Messages discrets
   '_ctrl': { max: 20, window: 1000 },        // Messages de contrôle session
   'auth': { max: 5, window: 10000 },         // Authentification
@@ -15,7 +15,11 @@ export const MESSAGE_RATE_LIMITS = {
   'default': { max: 10, window: 1000 }       // Limite par défaut
 };
 
+const WARN_THROTTLE_INTERVAL = 5000;
+
 export class RateLimiter {
+  #warnThrottles = new Map();
+
   constructor() {
     // Map de compteurs par type de message
     this.counters = new Map();
@@ -35,7 +39,7 @@ export class RateLimiter {
 
     // Vérifier si le peer est bloqué
     if (this.isBlocked(peerId)) {
-      console.warn(`[RateLimit] Peer bloqué: ${peerId}`);
+      this.#throttledWarn('blocked', peerId, `Peer bloqué: ${peerId}`);
       return false;
     }
 
@@ -61,13 +65,31 @@ export class RateLimiter {
     // Vérifier la limite
     if (counter.count >= limits.max) {
       this.recordViolation(peerId, messageType);
-      console.warn(`[RateLimit] Limite atteinte pour ${messageType}: ${counter.count}/${limits.max}`);
+      this.#throttledWarn(messageType, peerId, `Limite atteinte pour ${messageType}: ${counter.count}/${limits.max}`);
       return false;
     }
 
     // Incrémenter le compteur
     counter.count++;
     return true;
+  }
+
+  #throttledWarn(messageType, peerId, detail) {
+    const key = `${peerId}:${messageType}`;
+    const now = Date.now();
+    const entry = this.#warnThrottles.get(key);
+
+    if (entry && now - entry.time < WARN_THROTTLE_INTERVAL) {
+      entry.suppressed++;
+      return;
+    }
+
+    if (entry && entry.suppressed > 0) {
+      console.warn(`[RateLimit] ${detail} (+${entry.suppressed} supprimés)`);
+    } else {
+      console.warn(`[RateLimit] ${detail}`);
+    }
+    this.#warnThrottles.set(key, { time: now, suppressed: 0 });
   }
 
   /**
@@ -143,6 +165,12 @@ export class RateLimiter {
     }
     // Supprimer les violations
     this.violations.delete(peerId);
+    // Supprimer les throttles de warning
+    for (const [key] of this.#warnThrottles) {
+      if (key.startsWith(`${peerId}:`)) {
+        this.#warnThrottles.delete(key);
+      }
+    }
   }
 
   /**
@@ -156,6 +184,13 @@ export class RateLimiter {
     for (const [key, counter] of this.counters) {
       if (now - counter.windowStart > maxAge) {
         this.counters.delete(key);
+      }
+    }
+
+    // Nettoyer les throttles de warning
+    for (const [key, entry] of this.#warnThrottles) {
+      if (now - entry.time > WARN_THROTTLE_INTERVAL) {
+        this.#warnThrottles.delete(key);
       }
     }
 
