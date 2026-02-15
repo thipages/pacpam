@@ -3,14 +3,18 @@ import './chat-instance.js'
 const testMode = new URLSearchParams(location.search).has('test')
 
 if (testMode) {
+  const appId = 'pacpam-chat-' + Math.random().toString(36).slice(2, 10)
+
   const wrapper = document.createElement('div')
   wrapper.className = 'split'
 
   const peerA = document.createElement('chat-instance')
   peerA.setAttribute('pseudo', 'PEER-A')
+  peerA.setAttribute('app-id', appId)
 
   const peerB = document.createElement('chat-instance')
   peerB.setAttribute('pseudo', 'PEER-B')
+  peerB.setAttribute('app-id', appId)
 
   wrapper.append(peerA, peerB)
   document.body.appendChild(wrapper)

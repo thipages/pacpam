@@ -13,7 +13,7 @@ registerMessageSchemas({
   }
 })
 
-const APP_ID = 'pacpam-chat-7f3a9c2e1d4b'
+const DEFAULT_APP_ID = 'pacpam-chat-7f3a9c2e1d4b'
 
 export class ChatController {
   #listeners = {}
@@ -26,6 +26,10 @@ export class ChatController {
   #voluntaryDisconnect = false
   #screenId = 'IDENTITY'
   #pending = false
+  #appId = DEFAULT_APP_ID
+
+  get appId() { return this.#appId }
+  set appId(id) { this.#appId = id }
 
   // --- Événements ---
 
@@ -79,7 +83,7 @@ export class ChatController {
     })
 
     this.#wireCallbacks()
-    this.#sync.init(pseudo, APP_ID)
+    this.#sync.init(pseudo, this.#appId)
     this.#disconnectCause = null
     this.#voluntaryDisconnect = false
   }
@@ -87,7 +91,7 @@ export class ChatController {
   connect(remotePseudo) {
     this.#remotePseudo = remotePseudo
     this.#setScreen('PAIRING', true)
-    this.#sync.connect(`${APP_ID}-${remotePseudo}`)
+    this.#sync.connect(`${this.#appId}-${remotePseudo}`)
   }
 
   send(text) {
@@ -131,7 +135,7 @@ export class ChatController {
 
     this.#sync.onConnected = () => {
       if (!this.#remotePseudo) {
-        this.#remotePseudo = this.#sync.remotePeerId?.replace(`${APP_ID}-`, '') ?? null
+        this.#remotePseudo = this.#sync.remotePeerId?.replace(`${this.#appId}-`, '') ?? null
       }
       if (this.#sync.isHost) {
         this.#createChatSession()

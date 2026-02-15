@@ -1,5 +1,9 @@
 # Changelog — pacpam
 
+## v0.11.1 — 2026-02-15
+
+- Page index démos : checkbox « mode test » intégrée dans les cartes Chat et Pong (ajoute `?test` au lien)
+
 ## v0.11.0 — 2026-02-15
 
 P2PSync comme point d'entrée unique — instanciation simplifiée, passthroughs transport, rate-limiter adapté au temps réel.

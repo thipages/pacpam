@@ -2,7 +2,7 @@ import { P2PSync } from '../../src/sync/p2p-sync.js'
 import { createAuthMessage, verifyHash } from '../../src/core/auth.js'
 import { createPongHandler } from './pong-handler.js'
 
-const APP_ID = 'pacpam-pong-8a2b5c1d3e7f'
+const DEFAULT_APP_ID = 'pacpam-pong-8a2b5c1d3e7f'
 
 export class PongController {
   #listeners = {}
@@ -18,6 +18,10 @@ export class PongController {
   #isHost = false
   #lastMoveTime = 0
   #gameOverEmitted = false
+  #appId = DEFAULT_APP_ID
+
+  get appId() { return this.#appId }
+  set appId(id) { this.#appId = id }
 
   // --- Événements ---
 
@@ -72,7 +76,7 @@ export class PongController {
     })
 
     this.#wireCallbacks()
-    this.#sync.init(pseudo, APP_ID)
+    this.#sync.init(pseudo, this.#appId)
     this.#disconnectCause = null
     this.#voluntaryDisconnect = false
   }
@@ -80,7 +84,7 @@ export class PongController {
   connect(remotePseudo) {
     this.#remotePseudo = remotePseudo
     this.#setScreen('PAIRING', true)
-    this.#sync.connect(`${APP_ID}-${remotePseudo}`)
+    this.#sync.connect(`${this.#appId}-${remotePseudo}`)
   }
 
   move(y) {
@@ -142,7 +146,7 @@ export class PongController {
     this.#sync.onConnected = () => {
       this.#isHost = this.#sync.isHost
       if (!this.#remotePseudo) {
-        this.#remotePseudo = this.#sync.remotePeerId?.replace(`${APP_ID}-`, '') ?? null
+        this.#remotePseudo = this.#sync.remotePeerId?.replace(`${this.#appId}-`, '') ?? null
       }
       if (this.#isHost) {
         this.#createPongSession()

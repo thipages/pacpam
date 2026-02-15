@@ -1,7 +1,5 @@
 import { ChatController } from './chat-controller.js'
 
-const APP_ID = 'pacpam-chat-7f3a9c2e1d4b'
-
 const TEMPLATE = `
 <div class="ci-screen ci-screen-login ci-active" data-screen="login">
   <div class="ci-login-card">
@@ -81,6 +79,9 @@ class ChatInstance extends HTMLElement {
     this.#bindUI()
     this.#bindController()
 
+    const appId = this.getAttribute('app-id')
+    if (appId) this.#ctrl.appId = appId
+
     const pseudo = this.getAttribute('pseudo')
     if (pseudo) this.#refs.pseudo.value = pseudo
   }
@@ -96,7 +97,7 @@ class ChatInstance extends HTMLElement {
   // --- Propriété remotePeerId (mode test : cross-wire) ---
 
   set remotePeerId(id) {
-    const pseudo = id.replace(`${APP_ID}-`, '')
+    const pseudo = id.replace(`${this.#ctrl.appId}-`, '')
     this.#refs.remotePseudo.value = pseudo
   }
 
